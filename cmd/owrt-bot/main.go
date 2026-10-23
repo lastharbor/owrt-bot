@@ -45,6 +45,8 @@ func main() {
 	probe := flag.Bool("probe", false, "check every saved device once, print the result and exit")
 	wakeMAC := flag.String("wake", "", "send a magic packet to this MAC on the LAN and exit")
 	speed := flag.Bool("speedtest", false, "measure WAN download speed and exit")
+	check := flag.Bool("check", false, "validate the settings and the bot token, print the bot name and exit")
+	migrate := flag.Bool("migrate", false, "copy the INI config into "+config.UCIPath+" if that does not exist yet")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version)
@@ -54,6 +56,10 @@ func main() {
 	switch {
 	case *probe:
 		run = probeOnce
+	case *check:
+		run = checkOnce
+	case *migrate:
+		run = migrateOnce
 	case *speed:
 		run = speedOnce
 	case *wakeMAC != "":
@@ -65,8 +71,58 @@ func main() {
 	}
 }
 
+// loadConfig prefers the UCI config LuCI edits and falls back to the INI
+// file (fresh installs from the Lua bot, before -migrate ran).
+func loadConfig(iniPath string) (*config.Config, error) {
+	if _, err := os.Stat(config.UCIPath); err == nil {
+		out, err := sys.Exec{}.Run(context.Background(), "uci", "-q", "show", "owrt-bot")
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", config.UCIPath, err)
+		}
+		return config.FromINI(config.FromUCIShow(string(out)))
+	}
+	return config.Load(iniPath)
+}
+
+// migrateOnce writes the INI settings as UCI so LuCI can manage them.
+func migrateOnce(iniPath string) error {
+	if _, err := os.Stat(config.UCIPath); err == nil {
+		fmt.Println(config.UCIPath, "already exists")
+		return nil
+	}
+	raw, err := os.ReadFile(iniPath)
+	if err != nil {
+		return err
+	}
+	ini := config.ParseINI(string(raw))
+	if _, err := config.FromINI(ini); err != nil {
+		return err
+	}
+	if err := os.WriteFile(config.UCIPath, []byte(config.RenderUCI(ini)), 0o600); err != nil {
+		return err
+	}
+	fmt.Println("settings moved to", config.UCIPath)
+	return nil
+}
+
+// checkOnce validates the settings and asks Telegram who the token is.
+func checkOnce(iniPath string) error {
+	cfg, err := loadConfig(iniPath)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	me, err := telegram.New(cfg.Telegram.Token, telegram.Options{APIBase: cfg.Telegram.APIBase, DNSServer: cfg.DNSServer}).GetMe(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("OK @%s (%s), allowed chats: %d\n", me.Username, me.FirstName, len(cfg.Telegram.AllowedChats))
+	return nil
+}
+
 func run(cfgPath string) error {
-	cfg, err := config.Load(cfgPath)
+	cfg, err := loadConfig(cfgPath)
 	if err != nil {
 		return err
 	}
@@ -184,10 +240,23 @@ func run(cfgPath string) error {
 	for _, f := range features {
 		f.Register(router)
 	}
+	if len(cfg.Telegram.AllowedChats) == 0 {
+		log.Warn("no allowed chats: write to the bot, then allow yourself in LuCI → Services → Telegram bot")
+	}
+	pending := &prefs.Pending{Path: "/tmp/owrt-bot/pending.json"}
 	b := bot.New(tg, router, tr, log, bot.Options{
 		AllowedChats: cfg.Telegram.AllowedChats,
-		OffsetFile:   "/tmp/owrt-bot.offset",
-		Middleware:   []bot.Middleware{bot.Recover(), bot.Timing(log)},
+		OnReject: func(chat int64, from *telegram.User) {
+			pc := prefs.PendingChat{ID: chat}
+			if from != nil {
+				pc.Name, pc.Username = from.FirstName, from.Username
+			}
+			if err := pending.Add(pc); err != nil {
+				log.Warn("pending chat not saved", "err", err)
+			}
+		},
+		OffsetFile: "/tmp/owrt-bot.offset",
+		Middleware: []bot.Middleware{bot.Recover(), bot.Timing(log)},
 	})
 	wolFeature.Out = b
 	watcher.Subscribe(wolFeature.OnPresence)
@@ -220,7 +289,7 @@ func publishCommands(ctx context.Context, tg *telegram.Client, r *bot.Router, tr
 
 // probeOnce is a diagnostic: same presence logic as the bot, no Telegram.
 func probeOnce(cfgPath string) error {
-	cfg, err := config.Load(cfgPath)
+	cfg, err := loadConfig(cfgPath)
 	if err != nil {
 		return err
 	}
@@ -246,7 +315,7 @@ func probeOnce(cfgPath string) error {
 
 // wakeOnce sends magic packets without starting the bot (cron, debugging).
 func wakeOnce(cfgPath, mac string) error {
-	cfg, err := config.Load(cfgPath)
+	cfg, err := loadConfig(cfgPath)
 	if err != nil {
 		return err
 	}

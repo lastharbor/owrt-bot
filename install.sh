@@ -21,6 +21,8 @@ DATA=/etc/owrt-bot
 CONF=$DATA/config.conf
 LOG=/var/log/owrt-bot.log
 LEGACY_CONF=/etc/owrt-tg-bot/config.conf
+UCI_CONF=/etc/config/owrt-bot
+LUCI_FILES="/www/luci-static/resources/view/owrt-bot.js /usr/share/luci/menu.d/luci-app-owrt-bot.json /usr/share/rpcd/acl.d/luci-app-owrt-bot.json"
 TMP=$(mktemp -d /tmp/owrt-bot-install.XXXXXX)
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
@@ -46,6 +48,14 @@ ask() {
 	IFS= read -r "$1" </dev/tty
 }
 
+# verify FILE: compare with checksums.txt (Windows-built lists mark binary
+# files as "*name", both forms are accepted).
+verify() {
+	want=$(awk -v f="$1" '{n = $2; sub(/^[*]/, "", n)} n == f {print $1}' "$TMP/checksums.txt")
+	got=$(sha256sum "$TMP/$1" | awk '{print $1}')
+	[ -n "$want" ] && [ "$want" = "$got" ] || die "контрольная сумма $1 не совпала"
+}
+
 detect_arch() {
 	pkgarch=$( (opkg print-architecture 2>/dev/null || true) | awk '$2 !~ /^(all|noarch)$/ {a=$2} END {print a}')
 	[ -n "$pkgarch" ] || pkgarch=$(uname -m)
@@ -69,15 +79,25 @@ STOP=10
 USE_PROCD=1
 
 start_service() {
-	[ -f /etc/owrt-bot/config.conf ] || return 1
+	[ -f /etc/config/owrt-bot ] || [ -f /etc/owrt-bot/config.conf ] || return 1
 	procd_open_instance
 	procd_set_param command /usr/bin/owrt-bot -config /etc/owrt-bot/config.conf
 	procd_set_param env GOMEMLIMIT=48MiB GOGC=50
 	procd_set_param respawn 3600 5 0
 	procd_set_param stdout 1
 	procd_set_param stderr 1
-	procd_set_param file /etc/owrt-bot/config.conf
+	procd_set_param file /etc/config/owrt-bot
 	procd_close_instance
+}
+
+# "Save & Apply" in LuCI commits uci owrt-bot; restart to pick it up.
+service_triggers() {
+	procd_add_reload_trigger "owrt-bot"
+}
+
+reload_service() {
+	stop
+	start
 }
 EOF
 	chmod 755 "$INIT"
@@ -89,6 +109,10 @@ tg() { fetch "https://api.telegram.org/bot$TOKEN/$1${2:+?$2}" "$TMP/tg.json" && 
 json() { jsonfilter -i "$TMP/tg.json" -e "$1" 2>/dev/null || true; }
 
 setup_config() {
+	if [ -f "$UCI_CONF" ]; then
+		say "настройки уже есть, оставляю $UCI_CONF"
+		return
+	fi
 	if [ -f "$CONF" ]; then
 		say "настройки уже есть, оставляю $CONF"
 		return
@@ -162,19 +186,32 @@ EOF
 }
 
 stop_legacy() {
-	if [ -x /etc/init.d/owrt-tg-bot ]; then
+	[ -x /etc/init.d/owrt-tg-bot ] || return 0
+	if /etc/init.d/owrt-tg-bot enabled 2>/dev/null || pgrep -f owrt-tg-bot/core/main.lua >/dev/null 2>&1; then
 		say "останавливаю старый Lua-бот (два бота на одном токене мешают друг другу)"
 		/etc/init.d/owrt-tg-bot stop >/dev/null 2>&1 || true
 		/etc/init.d/owrt-tg-bot disable >/dev/null 2>&1 || true
 	fi
 }
 
+# install_luci TARBALL: the settings page, only where LuCI is installed.
+install_luci() {
+	[ -d /www/luci-static/resources ] || return 0
+	tar -xzf "$1" -C / || { warn "страница LuCI не установилась"; return 0; }
+	rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache 2>/dev/null || true
+	/etc/init.d/rpcd reload >/dev/null 2>&1 || true
+	say "страница настроек: LuCI → Службы → Telegram-бот"
+}
+
 uninstall() {
 	[ -x "$INIT" ] && { "$INIT" stop || true; "$INIT" disable || true; }
 	rm -f "$BIN" "$INIT"
+	# shellcheck disable=SC2086
+	rm -f $LUCI_FILES
+	rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache 2>/dev/null || true
 	nft delete table inet owrt_bot 2>/dev/null || true
 	if [ "${1:-}" = purge ]; then
-		rm -rf "$DATA" "$LOG" "$LOG.1"
+		rm -rf "$DATA" "$LOG" "$LOG.1" "$UCI_CONF"
 		sed -i '\|^/etc/owrt-bot/$|d' /etc/sysupgrade.conf 2>/dev/null || true
 		say "owrt-bot удалён вместе с настройками"
 	else
@@ -203,18 +240,27 @@ main() {
 	say "скачиваю $asset ($VERSION)"
 	fetch "$base/$asset" "$TMP/$asset" || die "не скачалось: $base/$asset"
 	fetch "$base/checksums.txt" "$TMP/checksums.txt" || die "не скачалось: checksums.txt"
-	want=$(awk -v f="$asset" '{n = $2; sub(/^[*]/, "", n)} n == f {print $1}' "$TMP/checksums.txt")
-	got=$(sha256sum "$TMP/$asset" | awk '{print $1}')
-	[ -n "$want" ] && [ "$want" = "$got" ] || die "контрольная сумма $asset не совпала"
+	verify "$asset"
 	chmod 755 "$TMP/$asset"
 	"$TMP/$asset" -version >/dev/null 2>&1 || die "бинарник не запускается на этом роутере"
+	luci=owrt-bot-luci.tar.gz
+	if [ -d /www/luci-static/resources ] && fetch "$base/$luci" "$TMP/$luci" 2>/dev/null; then
+		verify "$luci"
+	else
+		luci=
+	fi
 
 	setup_config
+	# LuCI edits UCI, so settings live in /etc/config/owrt-bot from now on.
+	if [ ! -f "$UCI_CONF" ] && [ -f "$CONF" ]; then
+		"$TMP/$asset" -migrate -config "$CONF" >/dev/null && say "настройки перенесены в $UCI_CONF"
+	fi
 	stop_legacy
 
 	[ -x "$INIT" ] && "$INIT" stop >/dev/null 2>&1 || true
 	mv "$TMP/$asset" "$BIN"
 	write_init
+	[ -n "$luci" ] && install_luci "$TMP/$luci"
 	grep -qx '/etc/owrt-bot/' /etc/sysupgrade.conf 2>/dev/null || echo '/etc/owrt-bot/' >>/etc/sysupgrade.conf
 	"$INIT" enable
 	before=$(wc -l <"$LOG" 2>/dev/null || echo 0)

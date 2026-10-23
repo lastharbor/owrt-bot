@@ -45,8 +45,12 @@ func TestFromINI(t *testing.T) {
 	}
 }
 
-func TestFromINIRejectsEmptyChats(t *testing.T) {
-	if _, err := FromINI(ParseINI("[telegram]\nbot_token=x\n")); err == nil {
-		t.Fatal("expected error for empty allowed_chat_ids")
+func TestFromINIAllowsNoChats(t *testing.T) {
+	c, err := FromINI(ParseINI("[telegram]\nbot_token=x\n"))
+	if err != nil || len(c.Telegram.AllowedChats) != 0 {
+		t.Fatalf("%+v %v", c, err)
+	}
+	if _, err := FromINI(ParseINI("[telegram]\n")); err == nil {
+		t.Fatal("empty token accepted")
 	}
 }

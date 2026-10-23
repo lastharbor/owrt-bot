@@ -170,9 +170,8 @@ func FromINI(ini INI) (*Config, error) {
 	if c.Telegram.Token == "" {
 		return nil, fmt.Errorf("[telegram] bot_token is empty")
 	}
-	if len(c.Telegram.AllowedChats) == 0 {
-		return nil, fmt.Errorf("[telegram] allowed_chat_ids is empty: the bot would answer nobody")
-	}
+	// No allowed chats is valid: the bot answers nobody but remembers who
+	// wrote, so the owner can allow them from LuCI.
 	if c.Alerts.Interval < 10*time.Second {
 		c.Alerts.Interval = 10 * time.Second
 	}

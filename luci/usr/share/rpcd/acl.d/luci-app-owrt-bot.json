@@ -1,0 +1,25 @@
+{
+	"luci-app-owrt-bot": {
+		"description": "Grant access to owrt-bot settings",
+		"read": {
+			"uci": [ "owrt-bot" ],
+			"ubus": {
+				"service": [ "list" ]
+			},
+			"file": {
+				"/tmp/owrt-bot/pending.json": [ "read" ],
+				"/var/log/owrt-bot.log": [ "read" ],
+				"/usr/bin/owrt-bot": [ "exec" ],
+				"/usr/bin/owrt-bot -version": [ "exec" ],
+				"/usr/bin/owrt-bot -check": [ "exec" ]
+			}
+		},
+		"write": {
+			"uci": [ "owrt-bot" ],
+			"file": {
+				"/etc/init.d/owrt-bot": [ "exec" ],
+				"/etc/init.d/owrt-bot restart": [ "exec" ]
+			}
+		}
+	}
+}

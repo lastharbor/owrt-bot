@@ -1,0 +1,14 @@
+{
+	"admin/services/owrt-bot": {
+		"title": "Telegram-бот",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "owrt-bot"
+		},
+		"depends": {
+			"acl": [ "luci-app-owrt-bot" ],
+			"uci": { "owrt-bot": true }
+		}
+	}
+}

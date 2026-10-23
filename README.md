@@ -32,6 +32,19 @@ curl -fsSL https://raw.githubusercontent.com/lastharbor/owrt-bot/main/install.sh
 Поддерживаются `aarch64`, `x86_64`, `armv7`, `mipsel`, `mips`. Если на роутере
 нет `curl`, подойдёт `uclient-fetch -qO- <url> | sh`.
 
+## Настройка в LuCI
+
+Если на роутере есть LuCI, установщик добавляет страницу **Службы → Telegram-бот**:
+
+- токен бота и разрешённые чаты, пороги уведомлений, дополнительные параметры;
+  «Сохранить и применить» перезапускает бота сам;
+- **Новые чаты**: напиши боту любое сообщение, обнови страницу и нажми
+  «Разрешить», искать chat id не нужно;
+- состояние, версия, «Проверить токен», «Перезапустить», хвост лога.
+
+Настройки лежат в UCI, `/etc/config/owrt-bot`, их можно менять и через `uci`.
+Устройства, группы и расписание пробуждения настраиваются в самом боте.
+
 ## Что умеет
 
 ### Пробуждение (Wake-on-LAN)
@@ -75,7 +88,8 @@ Set-Service sshd -StartupType Automatic; Start-Service sshd
 | Путь | Что |
 | --- | --- |
 | `/usr/bin/owrt-bot` | бинарник |
-| `/etc/owrt-bot/config.conf` | настройки (токен, chat id, пороги алертов) |
+| `/etc/config/owrt-bot` | настройки (UCI): токен, чаты, пороги алертов |
+| `/etc/owrt-bot/config.conf` | старый INI, нужен только для переноса (`owrt-bot -migrate`) |
 | `/etc/owrt-bot/wol.json` | устройства, группы, расписания |
 | `/etc/owrt-bot/prefs.json` | язык |
 | `/etc/owrt-bot/id_ed25519`, `known_hosts` | SSH-ключ бота и закреплённые ключи ПК |
@@ -93,6 +107,7 @@ Set-Service sshd -StartupType Automatic; Start-Service sshd
 owrt-bot -probe                    # статус всех сохранённых устройств
 owrt-bot -wake 02:5e:10:aa:bb:01   # отправить magic-пакеты
 owrt-bot -speedtest                # тест скорости WAN (4 потока, 8 с)
+owrt-bot -check                    # проверить настройки и токен
 ```
 
 ## Разработка

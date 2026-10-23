@@ -37,6 +37,9 @@ type Options struct {
 	OffsetFile   string // persists the update offset across restarts
 	Middleware   []Middleware
 	LiveMax      time.Duration // caps LiveOptions.For (tests use a few ms)
+	// OnReject sees every chat that is not allowed (from may be nil), so
+	// the owner can allow it from LuCI without looking up chat ids.
+	OnReject func(chat int64, from *telegram.User)
 }
 
 // Bot is the dispatcher: auth, per-chat ordering, routing, UI plumbing.
@@ -182,7 +185,17 @@ func (b *Bot) worker(q chan telegram.Update) {
 }
 
 func (b *Bot) reject(u telegram.Update, chat int64) {
+	var from *telegram.User
+	switch {
+	case u.Message != nil:
+		from = u.Message.From
+	case u.CallbackQuery != nil:
+		from = &u.CallbackQuery.From
+	}
 	b.log.Warn("unauthorized", "chat", chat)
+	if b.opt.OnReject != nil {
+		b.opt.OnReject(chat, from)
+	}
 	if u.CallbackQuery != nil {
 		_ = b.msgr.Answer(b.ctx, u.CallbackQuery.ID, b.tr.T("access_denied"))
 		return

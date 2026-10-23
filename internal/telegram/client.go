@@ -166,6 +166,11 @@ func (c *Client) GetUpdates(ctx context.Context, offset int64, timeout time.Dura
 	})
 }
 
+// GetMe returns the bot's own account; it is the cheapest token check.
+func (c *Client) GetMe(ctx context.Context) (User, error) {
+	return call[User](ctx, c, "getMe", map[string]any{})
+}
+
 // Send posts a new HTML message and returns its id.
 func (c *Client) Send(ctx context.Context, chatID int64, text string, kb *InlineKeyboard) (int, error) {
 	m, err := call[Message](ctx, c, "sendMessage", withKeyboard(map[string]any{
