@@ -3,9 +3,11 @@
 package sys
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"time"
@@ -41,6 +43,42 @@ func (e Exec) Run(ctx context.Context, name string, args ...string) ([]byte, err
 		return stdout.Bytes(), fmt.Errorf("%s %s: %s", name, strings.Join(args, " "), msg)
 	}
 	return stdout.Bytes(), nil
+}
+
+// StreamRunner runs long commands (package updates) and reports output
+// line by line while they run.
+type StreamRunner interface {
+	Stream(ctx context.Context, line func(string), name string, args ...string) error
+}
+
+// Stream runs name with stdout and stderr merged, calling line for every
+// output line. There is no built-in timeout: ctx bounds it.
+func (e Exec) Stream(ctx context.Context, line func(string), name string, args ...string) error {
+	pr, pw := io.Pipe()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout, cmd.Stderr = pw, pw
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		sc := bufio.NewScanner(pr)
+		sc.Buffer(make([]byte, 64<<10), 1<<20)
+		for sc.Scan() {
+			if l := strings.TrimSpace(sc.Text()); l != "" {
+				line(l)
+			}
+		}
+		_, _ = io.Copy(io.Discard, pr) // never block the child on a full pipe
+	}()
+	err := cmd.Wait()
+	pw.Close()
+	<-done
+	if err != nil {
+		return fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
+	}
+	return nil
 }
 
 // Lines splits command output into trimmed non-empty lines.

@@ -1,4 +1,4 @@
-// Package admin groups the maintenance screens: packages, backup/restore,
+// Package admin groups the maintenance screens: backup/restore,
 // logs and language. Each is its own Feature type.
 package admin
 
@@ -14,63 +14,6 @@ import (
 	"github.com/lastharbor/owrt-bot/internal/i18n"
 	"github.com/lastharbor/owrt-bot/internal/sys"
 )
-
-// ---- packages
-
-type Packages struct {
-	Run        sys.Runner
-	StatusFile string // /usr/lib/opkg/status
-}
-
-func (p *Packages) Register(r *bot.Router) {
-	r.Menu(60, "btn_packages", "pkg:show")
-	r.Callback("pkg:show", p.show)
-	r.Callback("pkg:upg", p.upgradable)
-}
-
-func (p *Packages) count() int {
-	b, _ := os.ReadFile(p.StatusFile)
-	return strings.Count("\n"+string(b), "\nPackage: ")
-}
-
-func (p *Packages) kb(c *bot.Ctx) bot.Screen {
-	return bot.Screen{Keyboard: bot.NewKB().
-		Row(bot.Btn(c.T("btn_pkg_upg"), "pkg:upg")).
-		Row(bot.Btn(c.T("btn_back"), "menu:main")).Build()}
-}
-
-func (p *Packages) show(c *bot.Ctx) error {
-	s := p.kb(c)
-	s.Text = "<b>" + c.T("pkg_title") + "</b>\n\n" + c.T("pkg_count", "n", p.count())
-	return c.Show(s)
-}
-
-func (p *Packages) upgradable(c *bot.Ctx) error {
-	c.Ack()
-	out, _ := p.Run.Run(c, "opkg", "list-upgradable")
-	var lines []string
-	for _, l := range sys.Lines(out) {
-		if strings.HasPrefix(l, " *") || strings.HasPrefix(l, "Collected errors") {
-			continue // opkg noise about unresolved feed packages
-		}
-		name := strings.Fields(l)[0]
-		if strings.HasPrefix(name, "kmod-") {
-			name = "⚠️ " + name // kernel modules from feeds do not match this kernel
-		}
-		lines = append(lines, "• "+html.EscapeString(name))
-	}
-	s := p.kb(c)
-	s.Text = "<b>" + c.T("pkg_title") + "</b>\n\n"
-	if len(lines) == 0 {
-		s.Text += c.T("pkg_none")
-	} else {
-		if len(lines) > 60 {
-			lines = append(lines[:60], "…")
-		}
-		s.Text += c.T("pkg_upg_header", "n", len(lines)) + "\n" + strings.Join(lines, "\n") + "\n\n" + c.T("pkg_kmod_hint")
-	}
-	return c.Show(s)
-}
 
 // ---- backup / restore
 

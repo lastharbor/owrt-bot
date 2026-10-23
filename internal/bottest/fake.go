@@ -123,3 +123,10 @@ func Type(chat int64, text string) telegram.Update {
 	userMsgID++
 	return telegram.Update{Message: &telegram.Message{MessageID: userMsgID, Chat: telegram.Chat{ID: chat}, Text: text}}
 }
+
+// AnswersSnapshot returns callback answers so far (they arrive async).
+func (m *Messenger) AnswersSnapshot() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.Answers...)
+}

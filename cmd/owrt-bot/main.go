@@ -23,12 +23,14 @@ import (
 	"github.com/lastharbor/owrt-bot/internal/features/alerts"
 	"github.com/lastharbor/owrt-bot/internal/features/clients"
 	"github.com/lastharbor/owrt-bot/internal/features/network"
+	"github.com/lastharbor/owrt-bot/internal/features/packages"
 	"github.com/lastharbor/owrt-bot/internal/features/system"
 	"github.com/lastharbor/owrt-bot/internal/features/wifi"
 	"github.com/lastharbor/owrt-bot/internal/features/wolui"
 	"github.com/lastharbor/owrt-bot/internal/i18n"
 	"github.com/lastharbor/owrt-bot/internal/logx"
 	"github.com/lastharbor/owrt-bot/internal/netx"
+	"github.com/lastharbor/owrt-bot/internal/pkgmgr"
 	"github.com/lastharbor/owrt-bot/internal/prefs"
 	"github.com/lastharbor/owrt-bot/internal/sys"
 	"github.com/lastharbor/owrt-bot/internal/telegram"
@@ -239,7 +241,7 @@ func run(cfgPath string) error {
 		wolFeature,
 		netFeature,
 		&clients.Feature{LeasesPath: "/tmp/dhcp.leases", Blocker: &clients.NFTBlocker{R: runner}, WOL: store},
-		&admin.Packages{Run: runner, StatusFile: "/usr/lib/opkg/status"},
+		&packages.Feature{PM: pkgmgr.Detect(runner, runner)},
 		&admin.Backup{Run: runner, TmpDir: os.TempDir()},
 		&admin.Logs{Log: logFile},
 		&admin.Language{T: tr, Prefs: pf},

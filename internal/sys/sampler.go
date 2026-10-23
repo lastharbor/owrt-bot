@@ -97,6 +97,13 @@ func (s *Sampler) tick(now time.Time) {
 	s.idle, s.total, s.rx, s.tx, s.prevTime = idle, total, rx, tx, now
 }
 
+// Seed replaces the history (demo screenshots and tests).
+func (s *Sampler) Seed(h []Sample) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hist = append([]Sample(nil), h...)
+}
+
 // Latest returns the newest sample (zero before the second tick).
 func (s *Sampler) Latest() Sample {
 	s.mu.Lock()
