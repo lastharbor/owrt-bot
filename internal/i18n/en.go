@@ -9,7 +9,7 @@ var EN = Catalog{
 	"unit_sec":        "{n} s",
 	"unit_mbit":       "{n} Mbit/s",
 	"unit_kbit":       "{n} kbit/s",
-	"live_on":         "🔴 LIVE · refreshing every {n} s · {time}",
+	"live_next":       "🔄 refresh in {n} s",
 	"live_off":        "⏸ Auto-refresh paused at {time}. Tap “🔄 Refresh”.",
 
 	"cmd_start":  "main menu",

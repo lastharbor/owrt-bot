@@ -26,23 +26,27 @@ func (o LiveOptions) withDefaults() LiveOptions {
 	return o
 }
 
-// Live shows render's screen and keeps re-rendering it in place until the
-// user opens another screen or opt.For passes. A footer tells the user
-// the screen is live; when it stops, the footer says so and the screen's
-// own refresh button (which calls Live again) resumes it.
+// Live shows render's screen and keeps it current until the user opens
+// another screen or opt.For passes. Data is re-rendered every opt.Every;
+// in between, once a second, only the footer changes to count down to the
+// next refresh. When it stops, the footer says so and the screen's own
+// refresh button (which calls Live again) resumes it.
 func (c *Ctx) Live(render Render, opt LiveOptions) error {
 	opt = opt.withDefaults()
 	if m := c.bot.opt.LiveMax; m > 0 && opt.For > m {
 		opt.For = m
 	}
-	first := render(c)
-	if err := c.Show(c.withFooter(first, true, opt)); err != nil {
+	// One edit per second is Telegram's per-chat comfort zone; tests use
+	// millisecond periods and tick at that rate instead.
+	tick := min(time.Second, opt.Every)
+	cur := render(c)
+	if err := c.Show(c.withFooter(cur, opt.Every)); err != nil {
 		return err
 	}
-	last := first.Text
 	c.Go(func(bg *Ctx) {
 		deadline := time.Now().Add(opt.For)
-		wait := opt.Every
+		next := time.Now().Add(opt.Every)
+		wait := tick
 		for {
 			// Never sleep past the deadline, so the "paused" frame is on time.
 			select {
@@ -53,32 +57,36 @@ func (c *Ctx) Live(render Render, opt LiveOptions) error {
 			if bg.Stale() {
 				return
 			}
-			wait = opt.Every
-			s := render(bg)
-			done := !time.Now().Before(deadline)
-			if s.Text == last && !done {
-				continue // nothing changed: skip the edit, save the rate limit
-			}
-			err := bg.Show(bg.withFooter(s, !done, opt))
-			if ra := telegram.RetryAfter(err); ra > 0 {
-				wait = ra // Telegram asked us to slow down
-				continue
-			}
-			if err != nil || done {
+			wait = tick
+			if !time.Now().Before(deadline) {
+				_ = bg.Show(bg.withFooter(render(bg), 0))
 				return
 			}
-			last = s.Text
+			if !time.Now().Before(next) {
+				cur = render(bg)
+				next = time.Now().Add(opt.Every)
+			}
+			err := bg.Show(bg.withFooter(cur, time.Until(next)))
+			if ra := telegram.RetryAfter(err); ra > 0 {
+				wait = ra // Telegram asked us to slow down
+				next = next.Add(ra)
+				continue
+			}
+			if err != nil {
+				return
+			}
 		}
 	})
 	return nil
 }
 
-func (c *Ctx) withFooter(s Screen, live bool, opt LiveOptions) Screen {
-	now := time.Now().Format("15:04:05")
-	if live {
-		s.Text += "\n\n<i>" + c.T("live_on", "n", int(opt.Every.Seconds()), "time", now) + "</i>"
-	} else {
-		s.Text += "\n\n<i>" + c.T("live_off", "time", now) + "</i>"
+// withFooter adds the countdown, or the "paused" note when left is 0.
+func (c *Ctx) withFooter(s Screen, left time.Duration) Screen {
+	if left <= 0 {
+		s.Text += "\n\n<i>" + c.T("live_off", "time", time.Now().Format("15:04:05")) + "</i>"
+		return s
 	}
+	n := int((left + time.Second - 1) / time.Second) // round up: 2.3 s left reads "3 s"
+	s.Text += "\n\n<i>" + c.T("live_next", "n", n) + "</i>"
 	return s
 }

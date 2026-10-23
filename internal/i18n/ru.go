@@ -9,7 +9,7 @@ var RU = Catalog{
 	"unit_sec":        "{n} с",
 	"unit_mbit":       "{n} Мбит/с",
 	"unit_kbit":       "{n} кбит/с",
-	"live_on":         "🔴 LIVE · обновляется каждые {n} с · {time}",
+	"live_next":       "🔄 обновление через {n} с",
 	"live_off":        "⏸ Автообновление на паузе с {time}. Нажми «🔄 Обновить».",
 
 	"cmd_start":  "главное меню",

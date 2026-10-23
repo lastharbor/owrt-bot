@@ -34,7 +34,7 @@ func TestLiveScreen(t *testing.T) {
 	menu := msgr.Last().ID
 
 	b.Dispatch(ctx, bottest.Press(1, menu, "t:live"))
-	if got := msgr.Get(menu).Text; !strings.HasPrefix(got, "value=0") || !strings.Contains(got, "LIVE") {
+	if got := msgr.Get(menu).Text; !strings.HasPrefix(got, "value=0") || !strings.Contains(got, "refresh in") {
 		t.Fatalf("first frame = %q", got)
 	}
 	value.Store(5)
