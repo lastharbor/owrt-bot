@@ -150,7 +150,7 @@ func FromINI(ini INI) (*Config, error) {
 		},
 		LogMaxKB:     int(ini.num("logging", "max_size_kb", 256)),
 		LogLevel:     ini.str("logging", "level", "info"),
-		LANIface:     ini.str("bot", "lan_iface", "br-lan"),
+		LANIface:     ini.str("bot", "lan_iface", ""), // empty = network.lan.device
 		DNSServer:    ini.str("bot", "dns_server", ""),
 		SpeedtestURL: ini.str("bot", "speedtest_url", ""), // empty = built-in server list
 		LegacyWOL:    ini["wol"],

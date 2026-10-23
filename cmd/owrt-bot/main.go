@@ -37,8 +37,6 @@ import (
 
 var version = "dev"
 
-const defaultServices = "ZeroBlock:zeroblock,sing-box:sing-box,Zapret:nfqws2:zapret2,Tailscale:tailscaled:tailscale,TorrServer:TorrServer:torrserver"
-
 func main() {
 	cfgPath := flag.String("config", "/etc/owrt-bot/config.conf", "config file")
 	showVersion := flag.Bool("version", false, "print version and exit")
@@ -74,14 +72,29 @@ func main() {
 // loadConfig prefers the UCI config LuCI edits and falls back to the INI
 // file (fresh installs from the Lua bot, before -migrate ran).
 func loadConfig(iniPath string) (*config.Config, error) {
-	if _, err := os.Stat(config.UCIPath); err == nil {
-		out, err := sys.Exec{}.Run(context.Background(), "uci", "-q", "show", "owrt-bot")
-		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", config.UCIPath, err)
+	var (
+		cfg *config.Config
+		err error
+	)
+	if _, statErr := os.Stat(config.UCIPath); statErr == nil {
+		out, runErr := sys.Exec{}.Run(context.Background(), "uci", "-q", "show", "owrt-bot")
+		if runErr != nil {
+			return nil, fmt.Errorf("read %s: %w", config.UCIPath, runErr)
 		}
-		return config.FromINI(config.FromUCIShow(string(out)))
+		cfg, err = config.FromINI(config.FromUCIShow(string(out)))
+	} else {
+		cfg, err = config.Load(iniPath)
 	}
-	return config.Load(iniPath)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.LANIface == "" { // the LAN bridge as the router itself defines it
+		cfg.LANIface, _ = sys.UCI{R: sys.Exec{}}.Get(context.Background(), "network.lan.device")
+		if cfg.LANIface == "" {
+			cfg.LANIface = "br-lan"
+		}
+	}
+	return cfg, nil
 }
 
 // migrateOnce writes the INI settings as UCI so LuCI can manage them.
@@ -197,13 +210,10 @@ func run(cfgPath string) error {
 	if wan == "" {
 		wan = "eth0"
 	}
-	spec := defaultServices
-	if v := cfg.Raw("bot", "services"); v != "" {
-		spec = v
-	}
-	var services []sys.Service // only those actually installed on this router
-	for _, s := range sys.ParseServices(spec) {
-		if _, err := os.Stat("/etc/init.d/" + s.Init); err == nil {
+	// Services are chosen in LuCI; skip any that were uninstalled since.
+	var services []sys.Service
+	for _, s := range sys.ParseServices(cfg.Raw("bot", "services")) {
+		if _, err := os.Stat("/etc/init.d/" + s.Name); err == nil {
 			services = append(services, s)
 		}
 	}

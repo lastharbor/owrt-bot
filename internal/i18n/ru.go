@@ -169,7 +169,7 @@ var RU = Catalog{
 	"sys_disk":            "{lvl} Диск <b>{pct}%</b> <code>{bar}</code> {used} / {total}",
 	"sys_uptime":          "⏱ Аптайм {v}",
 	"sys_services":        "Службы",
-	"sys_confirm_restart": "Перезапустить <b>{name}</b>? Связь через туннель может пропасть на несколько секунд.",
+	"sys_confirm_restart": "Перезапустить <b>{name}</b>? Если это VPN или прокси, связь с ботом может прерваться на несколько секунд.",
 	"sys_restarted":       "✅ {name} перезапущен",
 	"sys_restart_fail":    "⚠️ {name} не перезапустился:",
 	"btn_reboot_router":   "♻️ Перезагрузить роутер",
@@ -221,7 +221,7 @@ var RU = Catalog{
 	"btn_pkg_upg":    "🔎 Что можно обновить",
 	"pkg_none":       "✅ Обновлений нет (по последнему opkg update).",
 	"pkg_upg_header": "Можно обновить ({n}):",
-	"pkg_kmod_hint":  "⚠️ kmod-* из фидов собраны под другое ядро, их не обновлять.",
+	"pkg_kmod_hint":  "⚠️ kmod-* должны точно совпадать с ядром: обновляй их вместе с прошивкой, а не по одному.",
 
 	// ---- backup
 	"bk_title":          "💾 Бэкап конфигурации",

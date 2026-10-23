@@ -1,6 +1,7 @@
 package sys
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -66,5 +67,27 @@ func TestParsePOSIXTZ(t *testing.T) {
 		if _, off := time.Date(2026, 1, 1, 0, 0, 0, 0, loc).Zone(); off != want {
 			t.Errorf("%q offset %d want %d", in, off, want)
 		}
+	}
+}
+
+type fakeRunner string
+
+func (f fakeRunner) Run(context.Context, string, ...string) ([]byte, error) { return []byte(f), nil }
+
+func TestServices(t *testing.T) {
+	got := ParseServices("zeroblock, Zapret:nfqws2:zapret2,Tailscale:tailscale,")
+	if len(got) != 3 || got[0].Name != "zeroblock" || got[1].Name != "zapret2" || got[2].Name != "tailscale" {
+		t.Fatalf("parse = %+v", got)
+	}
+	states := ServiceStates(context.Background(), fakeRunner(`{
+		"dnsmasq": {"instances": {"instance1": {"running": true}}},
+		"zapret2": {"instances": {"a": {"running": false}, "b": {"running": true}}},
+		"ttyd": {}
+	}`))
+	if !states["dnsmasq"] || !states["zapret2"] || states["ttyd"] {
+		t.Fatalf("states = %v", states)
+	}
+	if _, known := states["missing"]; known {
+		t.Error("unknown service reported")
 	}
 }

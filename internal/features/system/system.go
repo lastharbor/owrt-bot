@@ -79,16 +79,16 @@ func (f *Feature) screen(c *bot.Ctx, extra string) bot.Screen {
 	)
 	k := bot.NewKB()
 	if len(f.Services) > 0 {
-		running := sys.RunningProcesses(f.Proc.Root + "/proc")
+		states := sys.ServiceStates(c, f.Run)
 		lines = append(lines, "", "<b>"+c.T("sys_services")+"</b>")
 		var btns []bot.Button
 		for i, svc := range f.Services {
-			mark := "🔴"
-			if running[svc.Process] {
-				mark = "🟢"
+			mark := "⚪" // not managed by procd: state unknown
+			if running, ok := states[svc.Name]; ok {
+				mark = map[bool]string{true: "🟢", false: "🔴"}[running]
 			}
-			lines = append(lines, mark+" "+svc.Label)
-			btns = append(btns, bot.Btn("🔁 "+svc.Label, "sys:svc", fmt.Sprint(i)))
+			lines = append(lines, mark+" "+svc.Name)
+			btns = append(btns, bot.Btn("🔁 "+svc.Name, "sys:svc", fmt.Sprint(i)))
 		}
 		k.Grid(2, btns...)
 	}
@@ -122,7 +122,7 @@ func (f *Feature) confirmRestart(c *bot.Ctx) error {
 		return f.show(c)
 	}
 	return c.Show(bot.Screen{
-		Text: c.T("sys_confirm_restart", "name", svc.Label),
+		Text: c.T("sys_confirm_restart", "name", svc.Name),
 		Keyboard: bot.NewKB().
 			Row(bot.Btn(c.T("btn_yes"), "sys:svcok", c.Arg(0)), bot.Btn(c.T("btn_cancel"), "sys:show")).Build(),
 	})
@@ -134,10 +134,10 @@ func (f *Feature) restart(c *bot.Ctx) error {
 		return f.show(c)
 	}
 	c.Ack()
-	_, err := f.Run.Run(c, "/etc/init.d/"+svc.Init, "restart")
-	msg := c.T("sys_restarted", "name", svc.Label)
+	_, err := f.Run.Run(c, "/etc/init.d/"+svc.Name, "restart")
+	msg := c.T("sys_restarted", "name", svc.Name)
 	if err != nil {
-		msg = c.T("sys_restart_fail", "name", svc.Label) + " <code>" + err.Error() + "</code>"
+		msg = c.T("sys_restart_fail", "name", svc.Name) + " <code>" + err.Error() + "</code>"
 	}
 	return f.liveWith(c, msg)
 }

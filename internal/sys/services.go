@@ -1,43 +1,57 @@
 package sys
 
 import (
-	"os"
-	"path/filepath"
+	"context"
+	"encoding/json"
 	"strings"
 )
 
-// Service is a daemon shown on the system screen.
+// Service is a daemon shown on the system screen, named by its init
+// script (/etc/init.d/<Name>).
 type Service struct {
-	Label   string // "Zapret"
-	Process string // name in /proc/<pid>/comm, "nfqws2"
-	Init    string // /etc/init.d/<Init>, "zapret2"
+	Name string
 }
 
-// ParseServices reads "Label:process:init,..." (init defaults to process).
+// ParseServices reads a comma-separated list of init script names. The
+// older "Label:process:init" form is still accepted: its init part wins.
 func ParseServices(spec string) []Service {
 	var out []Service
 	for _, item := range strings.Split(spec, ",") {
 		p := strings.Split(strings.TrimSpace(item), ":")
-		if len(p) < 2 || p[0] == "" || p[1] == "" {
-			continue
+		name := p[len(p)-1]
+		if len(p) == 2 {
+			name = p[1] // "Label:process" meant init == process
 		}
-		s := Service{Label: p[0], Process: p[1], Init: p[1]}
-		if len(p) > 2 && p[2] != "" {
-			s.Init = p[2]
+		if name = strings.TrimSpace(name); name != "" {
+			out = append(out, Service{Name: name})
 		}
-		out = append(out, s)
 	}
 	return out
 }
 
-// RunningProcesses returns the set of process names (comm) in procRoot.
-func RunningProcesses(procRoot string) map[string]bool {
-	out := map[string]bool{}
-	matches, _ := filepath.Glob(filepath.Join(procRoot, "[0-9]*", "comm"))
-	for _, m := range matches {
-		if b, err := os.ReadFile(m); err == nil {
-			out[strings.TrimSpace(string(b))] = true
-		}
+// ServiceStates asks procd which services have a running instance:
+// `ubus call service list` returns {"name": {"instances": {"x": {"running": true}}}}.
+// Services procd does not manage are absent from the map.
+func ServiceStates(ctx context.Context, r Runner) map[string]bool {
+	out, err := r.Run(ctx, "ubus", "call", "service", "list")
+	if err != nil {
+		return nil
 	}
-	return out
+	var list map[string]struct {
+		Instances map[string]struct {
+			Running bool `json:"running"`
+		} `json:"instances"`
+	}
+	if json.Unmarshal(out, &list) != nil {
+		return nil
+	}
+	states := make(map[string]bool, len(list))
+	for name, svc := range list {
+		running := false
+		for _, inst := range svc.Instances {
+			running = running || inst.Running
+		}
+		states[name] = running
+	}
+	return states
 }

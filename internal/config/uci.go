@@ -13,7 +13,7 @@ const UCIPath = "/etc/config/owrt-bot"
 
 // uciLists maps UCI list options to the comma-separated INI keys the rest
 // of the code reads.
-var uciLists = map[string]string{"allowed_chat_id": "allowed_chat_ids"}
+var uciLists = map[string]string{"allowed_chat_id": "allowed_chat_ids", "service": "services"}
 
 // FromUCIShow converts `uci -q show owrt-bot` output into the INI shape,
 // so FromINI stays the single place that applies defaults and validation.

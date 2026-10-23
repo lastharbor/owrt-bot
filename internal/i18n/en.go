@@ -162,7 +162,7 @@ var EN = Catalog{
 	"sys_disk":            "{lvl} Disk <b>{pct}%</b> <code>{bar}</code> {used} / {total}",
 	"sys_uptime":          "⏱ Uptime {v}",
 	"sys_services":        "Services",
-	"sys_confirm_restart": "Restart <b>{name}</b>? The tunnel may drop for a few seconds.",
+	"sys_confirm_restart": "Restart <b>{name}</b>? If it is a VPN or proxy, the bot may lose its connection for a few seconds.",
 	"sys_restarted":       "✅ {name} restarted",
 	"sys_restart_fail":    "⚠️ {name} failed to restart:",
 	"btn_reboot_router":   "♻️ Reboot router",
@@ -210,7 +210,7 @@ var EN = Catalog{
 	"btn_pkg_upg":    "🔎 Upgradable",
 	"pkg_none":       "✅ Nothing to upgrade (as of the last opkg update).",
 	"pkg_upg_header": "Upgradable ({n}):",
-	"pkg_kmod_hint":  "⚠️ kmod-* from feeds are built for another kernel, do not upgrade them.",
+	"pkg_kmod_hint":  "⚠️ kmod-* must match the kernel exactly: upgrade them with the firmware, not one by one.",
 
 	"bk_title":          "💾 Configuration backup",
 	"bk_hint":           "A sysupgrade -b archive with all router settings. Restore uses sysupgrade -r.",

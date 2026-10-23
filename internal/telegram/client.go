@@ -2,7 +2,7 @@
 //
 // The whole point of rewriting the bot was this file: the Lua version
 // spawned sh+curl per request, paying a fresh TLS handshake (~0.43 s
-// through the tunnel) every time. Here one http.Transport keeps a single
+// over a VPN path) every time. Here one http.Transport keeps a single
 // HTTP/2 connection open, so long-poll, edits and callback answers are
 // multiplexed over it and each call costs one round trip (~0.2 s).
 package telegram
@@ -95,7 +95,7 @@ func New(token string, opt Options) *Client {
 		MaxIdleConnsPerHost: 4,
 		IdleConnTimeout:     10 * time.Minute,
 		TLSHandshakeTimeout: 10 * time.Second,
-		// Detect a connection silently killed by the tunnel instead of
+		// Detect a connection silently dropped by a VPN or NAT instead of
 		// waiting for the long-poll timeout.
 		HTTP2: &http.HTTP2Config{
 			SendPingTimeout: 30 * time.Second,
