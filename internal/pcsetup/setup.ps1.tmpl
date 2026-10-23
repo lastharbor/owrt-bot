@@ -45,13 +45,41 @@ function Remember($name, $value) {
 }
 
 # 1. OpenSSH Server
-$cap = Get-WindowsCapability -Online | Where-Object Name -like 'OpenSSH.Server*' | Select-Object -First 1
-if ($cap.State -ne 'Installed') {
-	Say 'Устанавливаю OpenSSH Server (до пары минут)...'
-	Add-WindowsCapability -Online -Name $cap.Name | Out-Null
-	Remember 'installedOpenSSH' $true
+$sshd = Get-Service -Name sshd -ErrorAction SilentlyContinue
+if (-not $sshd) {
+	# Check if already installed via Windows Capability by exact name (avoids scanning the entire catalog)
+	$cap = Get-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0' -ErrorAction SilentlyContinue
+	if (-not $cap -or $cap.State -ne 'Installed') {
+		Say 'Устанавливаю OpenSSH Server...'
+		$installed = $false
+		$winget = Get-Command winget -ErrorAction SilentlyContinue
+		if (-not $winget) {
+			$localWinget = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\winget.exe'
+			if (Test-Path $localWinget) { $winget = $localWinget }
+		}
+		if ($winget) {
+			try {
+				Say 'Установка через быстрый источник (winget)...'
+				& $winget install --id Microsoft.OpenSSH.Preview --exact --accept-source-agreements --accept-package-agreements --silent --disable-interactivity | Out-Null
+				if ($LASTEXITCODE -eq 0 -or (Get-Service -Name sshd -ErrorAction SilentlyContinue)) {
+					$installed = $true
+					Remember 'installedOpenSSH' 'winget'
+				}
+			} catch {
+				Warn "winget завершился с ошибкой: $($_.Exception.Message)"
+			}
+		}
+		if (-not $installed) {
+			Say 'Установка через Windows Capability (до пары минут)...'
+			Add-WindowsCapability -Online -Name 'OpenSSH.Server~~~~0.0.1.0' | Out-Null
+			Remember 'installedOpenSSH' $true
+		}
+	} else {
+		Remember 'installedOpenSSH' $false
+	}
+} else {
+	Remember 'installedOpenSSH' $false
 }
-Remember 'installedOpenSSH' $false
 Set-Service -Name sshd -StartupType Automatic
 Start-Service sshd # creates sshd_config on first start
 
