@@ -101,14 +101,58 @@ func (s *SSHPower) AuthorizedKey() string {
 	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s.signer.PublicKey()))) + " owrt-bot"
 }
 
+// command returns what to send for a: one word for script-configured PCs
+// (their key only runs the owrt-bot wrapper), a full command otherwise.
+func command(p *Power, a Action) (string, error) {
+	if p.Restricted {
+		return string(a), nil
+	}
+	cmd, ok := commands[p.OS][a]
+	if !ok {
+		return "", fmt.Errorf("wol: no %s command for OS %q", a, p.OS)
+	}
+	return cmd, nil
+}
+
 func (s *SSHPower) Do(ctx context.Context, d Device, ip string, a Action) error {
 	if d.Power == nil || d.Power.User == "" {
 		return ErrNoPower
 	}
-	cmd, ok := commands[d.Power.OS][a]
-	if !ok {
-		return fmt.Errorf("wol: no %s command for OS %q", a, d.Power.OS)
+	cmd, err := command(d.Power, a)
+	if err != nil {
+		return err
 	}
+	_, err = s.run(ctx, d, ip, cmd)
+	// Shutting down or suspending often cuts the session before the exit
+	// status arrives; that is success, not failure.
+	var missing *ssh.ExitMissingError
+	if errors.As(err, &missing) || errors.Is(err, io.EOF) {
+		return nil
+	}
+	return err
+}
+
+// Check logs in and runs a harmless command, proving the key, user and
+// host are all right before the user needs the off button.
+func (s *SSHPower) Check(ctx context.Context, d Device, ip string) error {
+	if d.Power == nil || d.Power.User == "" {
+		return ErrNoPower
+	}
+	cmd := "echo ok"
+	if d.Power.Restricted {
+		cmd = "check"
+	}
+	out, err := s.run(ctx, d, ip, cmd)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(string(out), "ok") {
+		return fmt.Errorf("wol: unexpected answer %q", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func (s *SSHPower) run(ctx context.Context, d Device, ip, cmd string) ([]byte, error) {
 	addr := net.JoinHostPort(ip, strconv.Itoa(d.Power.PortOrDefault()))
 	cfg := &ssh.ClientConfig{
 		User:            d.Power.User,
@@ -118,28 +162,21 @@ func (s *SSHPower) Do(ctx context.Context, d Device, ip string, a Action) error 
 	}
 	conn, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp4", addr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	sc, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)
 	if err != nil {
 		conn.Close()
-		return err
+		return nil, err
 	}
 	client := ssh.NewClient(sc, chans, reqs)
 	defer client.Close()
 	sess, err := client.NewSession()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer sess.Close()
-	err = sess.Run(cmd)
-	// Shutting down or suspending often cuts the session before the exit
-	// status arrives; that is success, not failure.
-	var missing *ssh.ExitMissingError
-	if errors.As(err, &missing) || errors.Is(err, io.EOF) {
-		return nil
-	}
-	return err
+	return sess.Output(cmd)
 }
 
 // tofu pins the host key on first contact and rejects changes later.

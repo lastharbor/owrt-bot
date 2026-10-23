@@ -30,6 +30,7 @@ import (
 	"github.com/lastharbor/owrt-bot/internal/i18n"
 	"github.com/lastharbor/owrt-bot/internal/logx"
 	"github.com/lastharbor/owrt-bot/internal/netx"
+	"github.com/lastharbor/owrt-bot/internal/pcsetup"
 	"github.com/lastharbor/owrt-bot/internal/pkgmgr"
 	"github.com/lastharbor/owrt-bot/internal/prefs"
 	"github.com/lastharbor/owrt-bot/internal/sys"
@@ -196,6 +197,7 @@ func run(cfgPath string) error {
 		},
 		T: tr,
 	}
+	var setupSrv *pcsetup.Server
 	// Assign interfaces only on success: a nil *SSHPower inside a non-nil
 	// interface would pass "!= nil" checks and crash later.
 	if power, err := wol.NewSSHPower(filepath.Join(cfg.Paths.DataDir, "id_ed25519"), filepath.Join(cfg.Paths.DataDir, "known_hosts")); err != nil {
@@ -203,6 +205,16 @@ func run(cfgPath string) error {
 	} else {
 		mgr.Power = power
 		wolFeature.Keys = power
+		// Setup scripts are served on the LAN address only.
+		if ip, err := netx.InterfaceIPv4(cfg.LANIface); err != nil {
+			log.Warn("no LAN address, setup scripts disabled", "iface", cfg.LANIface, "err", err)
+		} else {
+			setupSrv = &pcsetup.Server{
+				RouterIP: ip.String(), Port: cfg.SetupPort, Key: power.AuthorizedKey,
+				OnReport: wolFeature.OnSetupReport, Log: log,
+			}
+			wolFeature.Setup = setupSrv
+		}
 	}
 
 	// ---- telegram and features
@@ -281,6 +293,13 @@ func run(cfgPath string) error {
 	go metrics.Run(ctx)
 	go (&alerts.Monitor{Cfg: cfg.Alerts, Proc: proc, Ping: pinger, T: tr, Out: b, Log: log}).Run(ctx)
 	go publishCommands(ctx, tg, router, tr, log)
+	if setupSrv != nil {
+		go func() {
+			if err := setupSrv.Run(ctx); err != nil {
+				log.Error("setup script server stopped", "err", err)
+			}
+		}()
+	}
 
 	b.Run(ctx, tg)
 	log.Info("stopped")

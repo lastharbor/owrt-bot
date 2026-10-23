@@ -30,7 +30,8 @@ type KeyProvider interface {
 type Feature struct {
 	M         *wol.Manager
 	Discovery wol.Discovery
-	Keys      KeyProvider // nil when power control is unavailable
+	Keys      KeyProvider  // nil when power control is unavailable
+	Setup     ScriptServer // nil when the LAN script server is not running
 	T         *i18n.Translator
 	Out       Broadcaster
 	CacheAge  time.Duration // how old a watcher observation may be on list screens
@@ -68,6 +69,9 @@ func (f *Feature) Register(r *bot.Router) {
 
 	// power
 	r.Callback("wol:pwr", f.showPowerSetup)
+	r.Callback("wol:pwman", f.showPowerManual)
+	r.Callback("wol:pwrm", f.showPowerRemove)
+	r.Callback("wol:pwfile", f.sendScript)
 	r.Callback("wol:pwos", f.askPowerUser)
 	r.Callback("wol:pwoff", f.disablePower)
 	r.Callback("wol:key", f.showKey)

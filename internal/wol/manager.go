@@ -124,6 +124,23 @@ func (m *Manager) PowerAction(ctx context.Context, d Device, a Action) error {
 	return nil
 }
 
+// PowerChecker is implemented by controllers that can test a login.
+type PowerChecker interface {
+	Check(ctx context.Context, d Device, ip string) error
+}
+
+// CheckPower logs in to d at ip without changing anything.
+func (m *Manager) CheckPower(ctx context.Context, d Device, ip string) error {
+	pc, ok := m.Power.(PowerChecker)
+	if !ok || m.Power == nil {
+		return ErrNoPower
+	}
+	if ip == "" {
+		ip = m.Presence.Check(ctx, d).IP
+	}
+	return pc.Check(ctx, d, ip)
+}
+
 // rememberIP stores the address the device answered on, so the next probe
 // does not depend on the neighbour table.
 func (m *Manager) rememberIP(d Device, ip string) {

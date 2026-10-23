@@ -1,0 +1,75 @@
+# owrt-bot: removes everything the setup script added to this PC.
+# Generated for device "{{.Device}}".
+#
+#   irm {{.ScriptURL}} | iex
+#
+# Removes the owrt-bot user and its profile, the router's key, the sshd
+# rule for that user and C:\ProgramData\owrt-bot. OpenSSH Server and its
+# firewall rule are removed only if the setup script installed them, and
+# Fast Startup goes back to what it was. Wake on magic packet stays on.
+
+$ErrorActionPreference = 'Stop'
+$Report = '{{.ReportURL}}'
+$Self = '{{.ScriptURL}}'
+$BotUser = 'owrt-bot'
+$Dir = Join-Path $env:ProgramData 'owrt-bot'
+$StateFile = Join-Path $Dir 'state.json'
+$KeysFile = Join-Path $env:ProgramData 'ssh\owrt-bot_authorized_keys'
+$SshdConfig = Join-Path $env:ProgramData 'ssh\sshd_config'
+
+function Say($m) { Write-Host "==> $m" -ForegroundColor Green }
+function Warn($m) { Write-Host "!   $m" -ForegroundColor Yellow }
+
+$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+	Say 'Нужны права администратора, открываю окно с запросом...'
+	Start-Process powershell -Verb RunAs -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-Command', "irm '$Self' | iex")
+	return
+}
+
+$state = if (Test-Path $StateFile) { Get-Content $StateFile -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+
+# The router's key and the sshd rule
+Remove-Item -Path $KeysFile -Force -ErrorAction SilentlyContinue
+if (Test-Path $SshdConfig) {
+	$cfg = Get-Content $SshdConfig -Raw
+	$clean = $cfg -replace '(?m)\r?\nMatch User owrt-bot\r?\n\s*AuthorizedKeysFile __PROGRAMDATA__/ssh/owrt-bot_authorized_keys\r?\n?', ''
+	if ($clean -ne $cfg) { Set-Content -Path $SshdConfig -Value $clean -NoNewline -Encoding ascii }
+}
+Say 'Ключ роутера и правило sshd удалены'
+
+# The user and its profile
+if (Get-LocalUser -Name $BotUser -ErrorAction SilentlyContinue) {
+	$sid = (Get-LocalUser -Name $BotUser).SID.Value
+	Remove-LocalUser -Name $BotUser
+	Get-CimInstance Win32_UserProfile | Where-Object SID -eq $sid | Remove-CimInstance -ErrorAction SilentlyContinue
+	Say "Пользователь $BotUser удалён"
+}
+Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialAccounts\UserList' -Name $BotUser -ErrorAction SilentlyContinue
+
+# Fast Startup back to what it was
+if ($state.PSObject.Properties.Name -contains 'hiberbootBefore' -and $null -ne $state.hiberbootBefore) {
+	Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name HiberbootEnabled -Value $state.hiberbootBefore
+	Say 'Быстрый запуск вернул как было'
+}
+
+# OpenSSH Server only if the setup installed it
+if ($state.installedOpenSSH -eq $true) {
+	Stop-Service sshd -ErrorAction SilentlyContinue
+	$cap = Get-WindowsCapability -Online | Where-Object Name -like 'OpenSSH.Server*' | Select-Object -First 1
+	if ($cap.State -eq 'Installed') { Remove-WindowsCapability -Online -Name $cap.Name | Out-Null }
+	Remove-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue
+	Say 'OpenSSH Server удалён (его ставил скрипт настройки)'
+} elseif (Get-Service sshd -ErrorAction SilentlyContinue) {
+	Restart-Service sshd
+	Say 'OpenSSH Server оставлен: он стоял до настройки'
+}
+
+Remove-Item -Path $Dir -Recurse -Force -ErrorAction SilentlyContinue
+
+try {
+	Invoke-RestMethod -Method Post -Uri $Report -Body @{ user = $BotUser; os = 'windows'; host = $env:COMPUTERNAME; action = 'removed' } | Out-Null
+	Say 'Готово. Бот уберёт выключение у этого устройства.'
+} catch {
+	Warn "не удалось сообщить боту: $($_.Exception.Message)"
+}

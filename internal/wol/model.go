@@ -34,6 +34,10 @@ type Power struct {
 	User string `json:"user"`
 	Port int    `json:"port,omitempty"` // default 22
 	OS   OS     `json:"os"`
+	// Restricted means the PC was set up by the bot's script: the key is
+	// pinned to a wrapper with restrict,command=, so the bot sends one word
+	// (off, reboot, sleep, check) instead of a full command line.
+	Restricted bool `json:"restricted,omitempty"`
 }
 
 func (p *Power) PortOrDefault() int {

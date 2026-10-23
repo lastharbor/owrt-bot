@@ -238,13 +238,14 @@ func (b *Bot) handle(u telegram.Update) {
 
 // deleteAsync removes a message without making the user wait for it.
 func (b *Bot) deleteAsync(chat int64, id int) {
+	b.log.Info("delete message", "chat", chat, "msg", id)
 	b.wg.Add(1)
 	go func() {
 		defer b.wg.Done()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := b.msgr.Delete(ctx, chat, id); err != nil {
-			b.log.Debug("delete message", "chat", chat, "msg", id, "err", err)
+			b.log.Warn("delete message failed", "chat", chat, "msg", id, "err", err)
 		}
 	}()
 }

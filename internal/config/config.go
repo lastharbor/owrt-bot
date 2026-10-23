@@ -109,6 +109,7 @@ type Config struct {
 	DNSServer    string // optional "127.0.0.1:53"; empty = system resolver
 	LegacyWOL    map[string]string
 	SpeedtestURL string
+	SetupPort    int // LAN port for PC setup scripts
 
 	ini INI
 }
@@ -153,6 +154,7 @@ func FromINI(ini INI) (*Config, error) {
 		LANIface:     ini.str("bot", "lan_iface", ""), // empty = network.lan.device
 		DNSServer:    ini.str("bot", "dns_server", ""),
 		SpeedtestURL: ini.str("bot", "speedtest_url", ""), // empty = built-in server list
+		SetupPort:    int(ini.num("bot", "setup_port", 8099)),
 		LegacyWOL:    ini["wol"],
 		ini:          ini,
 	}

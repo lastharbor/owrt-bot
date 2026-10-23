@@ -88,3 +88,12 @@ func ifaceIPv4(ifi *net.Interface, target net.IP) (net.IP, error) {
 	}
 	return first, nil
 }
+
+// InterfaceIPv4 returns the first IPv4 address of the named interface.
+func InterfaceIPv4(name string) (net.IP, error) {
+	ifi, err := net.InterfaceByName(name)
+	if err != nil {
+		return nil, err
+	}
+	return ifaceIPv4(ifi, nil)
+}
