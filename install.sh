@@ -5,6 +5,8 @@
 #
 # Non-interactive:   ... | BOT_TOKEN=123:abc CHAT_ID=111 sh
 # Specific version:  ... | OWRT_BOT_VERSION=v0.2.0 sh
+# Mirror / offline:  ... | OWRT_BOT_BASE_URL=https://mirror.example/owrt-bot sh
+#                    (a directory with owrt-bot-linux-<arch> and checksums.txt)
 # Uninstall:         ... | sh -s -- uninstall        (keeps /etc/owrt-bot)
 #                    ... | sh -s -- purge            (also removes settings)
 #
@@ -190,7 +192,9 @@ main() {
 	esac
 
 	arch=$(detect_arch)
-	if [ "$VERSION" = latest ]; then
+	if [ -n "${OWRT_BOT_BASE_URL:-}" ]; then
+		base=$OWRT_BOT_BASE_URL # mirror or local test: a directory with the release files
+	elif [ "$VERSION" = latest ]; then
 		base="https://github.com/$REPO/releases/latest/download"
 	else
 		base="https://github.com/$REPO/releases/download/$VERSION"
