@@ -49,7 +49,8 @@ curl -fsSL https://raw.githubusercontent.com/lastharbor/owrt-bot/main/install.sh
 ### Роутер
 
 Живые CPU (с графиком), память, диск, температура, аптайм,
-скорость WAN с графиками, ping, внешний IP, тест скорости, статус и
+скорость WAN с графиками, ping, внешний IP, тест скорости (4 потока,
+запасные серверы: Cloudflare, OVH, Selectel), статус и
 перезапуск служб, перезагрузка; клиенты DHCP с временной блокировкой (nftables);
 Wi-Fi (если есть радио); пакеты к обновлению; бэкап и восстановление
 `sysupgrade`; живой лог; русский и английский интерфейс.
@@ -91,6 +92,7 @@ Set-Service sshd -StartupType Automatic; Start-Service sshd
 ```sh
 owrt-bot -probe                    # статус всех сохранённых устройств
 owrt-bot -wake 02:5e:10:aa:bb:01   # отправить magic-пакеты
+owrt-bot -speedtest                # тест скорости WAN (4 потока, 8 с)
 ```
 
 ## Разработка

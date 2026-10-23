@@ -44,6 +44,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
 	probe := flag.Bool("probe", false, "check every saved device once, print the result and exit")
 	wakeMAC := flag.String("wake", "", "send a magic packet to this MAC on the LAN and exit")
+	speed := flag.Bool("speedtest", false, "measure WAN download speed and exit")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version)
@@ -53,6 +54,8 @@ func main() {
 	switch {
 	case *probe:
 		run = probeOnce
+	case *speed:
+		run = speedOnce
 	case *wakeMAC != "":
 		run = func(cfgPath string) error { return wakeOnce(cfgPath, *wakeMAC) }
 	}
@@ -148,9 +151,20 @@ func run(cfgPath string) error {
 			services = append(services, s)
 		}
 	}
+	speedURLs := cfg.SpeedtestURL
+	if speedURLs == "" {
+		speedURLs = network.DefaultSpeedtestURLs
+	}
+	// No client-wide timeout: the speed test bounds itself, and a timeout
+	// here would cut a long download mid-measurement.
+	speedHTTP := &http.Client{Transport: &http.Transport{
+		Proxy: nil, ForceAttemptHTTP2: false, MaxIdleConnsPerHost: 8,
+		ResponseHeaderTimeout: 5 * time.Second, TLSHandshakeTimeout: 5 * time.Second,
+	}}
 	metrics := &sys.Sampler{Proc: proc, WAN: wan, Every: 2 * time.Second}
 	netFeature := &network.Feature{
-		Proc: proc, Metrics: metrics, WANIface: wan, PingHost: cfg.Alerts.WANHost, Pinger: pinger, HTTP: httpc, SpeedtestURL: cfg.SpeedtestURL,
+		Proc: proc, Metrics: metrics, WANIface: wan, PingHost: cfg.Alerts.WANHost, Pinger: pinger, HTTP: httpc,
+		Speed: network.SpeedTest{HTTP: speedHTTP, URLs: network.ParseURLs(speedURLs)},
 	}
 
 	router := bot.NewRouter()
@@ -245,5 +259,18 @@ func wakeOnce(cfgPath, mac string) error {
 		return err
 	}
 	fmt.Println("sent to", mac, "via", cfg.LANIface)
+	return nil
+}
+
+// speedOnce runs the bot's speed test from the shell.
+func speedOnce(string) error {
+	st := network.SpeedTest{HTTP: &http.Client{}, URLs: network.ParseURLs(network.DefaultSpeedtestURLs)}
+	r, err := st.Run(context.Background(), func(host string, b int64, el time.Duration) {
+		fmt.Printf("%s %2.0fs %6.1f MB"+string(rune(10)), host, el.Seconds(), float64(b)/(1<<20))
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%.0f Mbit/s via %s (%d MB in %.1f s)"+string(rune(10)), r.Mbps(), r.Host, r.Bytes>>20, r.Elapsed.Seconds())
 	return nil
 }

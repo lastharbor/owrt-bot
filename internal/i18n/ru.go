@@ -177,16 +177,18 @@ var RU = Catalog{
 	"sys_rebooting":       "♻️ Перезагружаюсь…",
 
 	// ---- network
-	"net_title":         "🌐 Сеть",
-	"net_rx":            "⬇️ Входящий <b>{v}</b>",
-	"net_tx":            "⬆️ Исходящий <b>{v}</b>",
-	"net_total":         "Всего: ⬇️ {rx}  ⬆️ {tx}",
-	"net_ping_ok":       "🟢 {host} отвечает",
-	"net_ping_fail":     "🔴 {host} не отвечает",
-	"net_ip":            "Внешний IP: <code>{ip}</code>",
-	"btn_speedtest":     "🚀 Тест скорости",
-	"net_speed_running": "🚀 Меряю скорость…",
-	"net_speed_result":  "🚀 {mbps} Мбит/с ({mb} МБ за {sec} с)",
+	"net_title":          "🌐 Сеть",
+	"net_rx":             "⬇️ Входящий <b>{v}</b>",
+	"net_tx":             "⬆️ Исходящий <b>{v}</b>",
+	"net_total":          "Всего: ⬇️ {rx}  ⬆️ {tx}",
+	"net_ping_ok":        "🟢 {host} отвечает",
+	"net_ping_fail":      "🔴 {host} не отвечает",
+	"net_ip":             "Внешний IP: <code>{ip}</code>",
+	"btn_speedtest":      "🚀 Тест скорости",
+	"net_speed_running":  "🚀 Подключаюсь к серверу теста…",
+	"net_speed_result":   "🚀 <b>{mbps} Мбит/с</b> · {host} · {mb} МБ за {sec} с",
+	"net_speed_progress": "🚀 Меряю через {host}… {sec} с · сейчас <b>{now}</b>",
+	"net_speed_fail":     "⚠️ Тест скорости не удался: ни один сервер не отдал данные.",
 
 	// ---- clients
 	"cl_title":        "👥 Клиенты (DHCP)",

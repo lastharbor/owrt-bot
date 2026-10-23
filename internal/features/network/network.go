@@ -3,7 +3,9 @@ package network
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"strings"
@@ -25,8 +27,8 @@ type Feature struct {
 	Pinger   interface {
 		Ping(ctx context.Context, ip string) bool
 	}
-	HTTP         *http.Client
-	SpeedtestURL string
+	HTTP  *http.Client
+	Speed SpeedTest
 
 	mu   sync.Mutex
 	ip   string
@@ -119,25 +121,43 @@ func (f *Feature) liveWith(c *bot.Ctx, extra string) error {
 	return c.Live(func(c *bot.Ctx) bot.Screen { return f.screen(c, extra) }, live)
 }
 
+// speedtest runs in the background with a live progress screen, so the
+// chat stays usable for the ~10 s it takes.
 func (f *Feature) speedtest(c *bot.Ctx) error {
 	c.Ack()
-	if err := c.Show(bot.Screen{Text: c.T("net_speed_running")}); err != nil {
+	if err := c.Show(f.speedScreen(c, "", nil, 0)); err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(c, 20*time.Second)
-	defer cancel()
-	start := time.Now()
-	var n int64
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, f.SpeedtestURL, nil)
-	resp, err := f.HTTP.Do(req)
-	if err == nil {
-		n, _ = io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+	c.Go(func(bg *bot.Ctx) {
+		var rates []float64
+		var last int64
+		r, err := f.Speed.Run(bg, func(host string, bytes int64, el time.Duration) {
+			rates = append(rates, float64(bytes-last)) // bytes in the last second
+			last = bytes
+			_ = bg.Show(f.speedScreen(bg, host, rates, el))
+		})
+		var line string
+		if err != nil {
+			line = bg.T("net_speed_fail") + "\n<code>" + html.EscapeString(err.Error()) + "</code>"
+		} else {
+			line = bg.T("net_speed_result", "mbps", fmt.Sprintf("%.0f", r.Mbps()), "host", r.Host,
+				"mb", r.Bytes>>20, "sec", fmt.Sprintf("%.1f", r.Elapsed.Seconds()))
+			if len(rates) > 1 {
+				line += "\n<code>" + ui.Spark(rates, 0, 0) + "</code>"
+			}
+		}
+		if err := f.liveWith(bg, line); errors.Is(err, bot.ErrStale) {
+			_ = bg.Notify(line)
+		}
+	})
+	return nil
+}
+
+func (f *Feature) speedScreen(c *bot.Ctx, host string, rates []float64, el time.Duration) bot.Screen {
+	text := c.T("net_speed_running")
+	if len(rates) > 0 {
+		text = c.T("net_speed_progress", "host", host, "sec", int(el.Seconds()),
+			"now", ui.Rate(c.T, rates[len(rates)-1])) + "\n<code>" + ui.Spark(rates, 0, 0) + "</code>"
 	}
-	el := time.Since(start).Seconds()
-	res := c.T("error_generic")
-	if n > 0 && el > 0 {
-		res = c.T("net_speed_result", "mbps", fmt.Sprintf("%.0f", float64(n)*8/1e6/el), "mb", n>>20, "sec", fmt.Sprintf("%.1f", el))
-	}
-	return f.liveWith(c, res)
+	return bot.Screen{Text: text, Keyboard: bot.NewKB().Row(bot.Btn(c.T("btn_back"), "net:show")).Build()}
 }

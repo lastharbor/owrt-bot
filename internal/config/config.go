@@ -152,7 +152,7 @@ func FromINI(ini INI) (*Config, error) {
 		LogLevel:     ini.str("logging", "level", "info"),
 		LANIface:     ini.str("bot", "lan_iface", "br-lan"),
 		DNSServer:    ini.str("bot", "dns_server", ""),
-		SpeedtestURL: ini.str("bot", "speedtest_url", "http://speedtest.selectel.ru/10MB"),
+		SpeedtestURL: ini.str("bot", "speedtest_url", ""), // empty = built-in server list
 		LegacyWOL:    ini["wol"],
 		ini:          ini,
 	}
