@@ -66,6 +66,7 @@ var EN = Catalog{
 	"btn_notify_on":   "🔔 Notify",
 	"btn_notify_off":  "🔕 Don't notify",
 	"btn_power_setup": "🖥 Power",
+	"btn_power_add":   "⏻ Set up shutdown",
 	"wol_st_online":   "online",
 	"wol_st_asleep":   "asleep or firewalled (answers ARP only)",
 	"wol_st_offline":  "off",

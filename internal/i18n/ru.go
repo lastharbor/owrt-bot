@@ -67,6 +67,7 @@ var RU = Catalog{
 	"btn_notify_on":   "🔔 Уведомлять",
 	"btn_notify_off":  "🔕 Не уведомлять",
 	"btn_power_setup": "🖥 Питание",
+	"btn_power_add":   "⏻ Настроить выключение",
 	"wol_st_online":   "в сети",
 	"wol_st_asleep":   "спит или закрыт фаерволом (отвечает только на ARP)",
 	"wol_st_offline":  "выключен",

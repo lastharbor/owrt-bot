@@ -97,8 +97,14 @@ func (f *Feature) cardScreen(c *bot.Ctx, d wol.Device, r wol.Result, extra strin
 	if d.Notify {
 		notifyBtn = c.T("btn_notify_off")
 	}
+	// Until SSH is set up there are no ⏻ buttons, so offer the setup
+	// itself where the user looks for "turn off".
+	powerBtn := c.T("btn_power_add")
+	if d.Power != nil {
+		powerBtn = c.T("btn_power_setup")
+	}
 	kb.Row(bot.Btn(c.T("btn_rename"), "wol:ren", d.ID), bot.Btn("🌐 IP", "wol:ip", d.ID), bot.Btn("🔗 MAC", "wol:mac", d.ID)).
-		Row(bot.Btn(notifyBtn, "wol:ntf", d.ID), bot.Btn(c.T("btn_power_setup"), "wol:pwr", d.ID)).
+		Row(bot.Btn(notifyBtn, "wol:ntf", d.ID), bot.Btn(powerBtn, "wol:pwr", d.ID)).
 		Row(bot.Btn(c.T("btn_delete"), "wol:del", d.ID)).
 		Row(bot.Btn(c.T("btn_to_list"), "wol:list"))
 	return bot.Screen{Text: text, Keyboard: kb.Build()}
