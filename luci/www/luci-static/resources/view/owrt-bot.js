@@ -137,8 +137,11 @@ return view.extend({
 		s = m.section(form.NamedSection, 'bot', 'bot', _('Службы'));
 		o = s.option(form.MultiValue, 'service', _('Показывать в боте'),
 			_('Состояние и кнопка перезапуска на экране «Система»'));
+		// Only daemons: one-shot scripts (firewall, sysctl, …) have no
+		// instances and would always look stopped in the bot.
 		Object.keys(services).sort().forEach(function(name) {
-			if (name !== 'owrt-bot')
+			var inst = services[name].instances;
+			if (name !== 'owrt-bot' && inst && Object.keys(inst).length)
 				o.value(name);
 		});
 		o.display_size = 8;

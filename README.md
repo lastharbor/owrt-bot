@@ -4,6 +4,32 @@ Telegram-бот для роутера на OpenWrt: Wake-on-LAN с живыми 
 мониторинг роутера, клиенты, Wi-Fi, бэкапы. Один статический бинарник на Go,
 одно постоянное HTTP/2-соединение с Telegram, кнопки отвечают за ~0,3 с.
 
+## Как выглядит
+
+<table>
+<tr>
+<td><img src="docs/img/tg-menu.png" width="260" alt="Главное меню"></td>
+<td><img src="docs/img/tg-system.png" width="260" alt="Система: живые CPU, память, диск, службы"></td>
+<td><img src="docs/img/tg-network.png" width="260" alt="Сеть: скорость WAN с графиками"></td>
+</tr>
+<tr>
+<td><img src="docs/img/tg-wol.png" width="260" alt="Пробуждение: устройства со статусами"></td>
+<td><img src="docs/img/tg-waking.png" width="260" alt="Будим ноутбук, идёт отсчёт"><br><img src="docs/img/tg-woke.png" width="260" alt="Ноутбук в сети через 12 с"></td>
+<td><img src="docs/img/tg-device.png" width="260" alt="Карточка устройства с выключением по SSH"></td>
+</tr>
+<tr>
+<td><img src="docs/img/tg-group.png" width="260" alt="Группа устройств"></td>
+<td><img src="docs/img/tg-schedule.png" width="260" alt="Расписание пробуждения"></td>
+<td><img src="docs/img/tg-packages.png" width="260" alt="Пакеты: обновления"></td>
+</tr>
+</table>
+
+Настройка в LuCI (**Службы → Telegram-бот**):
+
+<img src="docs/img/luci.png" width="640" alt="Страница настроек в LuCI">
+
+<sub>Экраны Telegram сняты с настоящего вывода бота на демо-данных (`tools/screens`), оформление клиента нарисовано.</sub>
+
 ## Установка
 
 На роутере под root:

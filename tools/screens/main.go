@@ -26,11 +26,14 @@ import (
 
 	"github.com/lastharbor/owrt-bot/internal/bot"
 	"github.com/lastharbor/owrt-bot/internal/bottest"
+	"github.com/lastharbor/owrt-bot/internal/features/admin"
 	"github.com/lastharbor/owrt-bot/internal/features/clients"
 	"github.com/lastharbor/owrt-bot/internal/features/network"
+	"github.com/lastharbor/owrt-bot/internal/features/packages"
 	"github.com/lastharbor/owrt-bot/internal/features/system"
 	"github.com/lastharbor/owrt-bot/internal/features/wolui"
 	"github.com/lastharbor/owrt-bot/internal/i18n"
+	"github.com/lastharbor/owrt-bot/internal/pkgmgr"
 	"github.com/lastharbor/owrt-bot/internal/sys"
 	"github.com/lastharbor/owrt-bot/internal/telegram"
 	"github.com/lastharbor/owrt-bot/internal/wol"
@@ -84,6 +87,31 @@ func (l *lan) Send(_ context.Context, _ string, mac net.HardwareAddr) error {
 	}
 	return nil
 }
+
+type demoPM struct{}
+
+func (demoPM) Name() string                  { return "opkg" }
+func (demoPM) Installed(context.Context) int { return 214 }
+func (demoPM) ListsUpdated() time.Time       { return time.Now().Add(-2 * time.Hour) }
+func (demoPM) Refresh(context.Context, func(string)) error {
+	return nil
+}
+func (demoPM) Upgradable(context.Context) ([]pkgmgr.Upgrade, error) {
+	return []pkgmgr.Upgrade{
+		{Name: "luci-base", From: "26.278", To: "26.286"},
+		{Name: "dnsmasq-full", From: "2.90-r3", To: "2.90-r4"},
+		{Name: "kmod-nft-core", From: "6.6.110-1", To: "6.6.112-1"},
+	}, nil
+}
+func (demoPM) Upgrade(context.Context, []string, func(string)) error { return nil }
+
+type demoLog struct{}
+
+func (demoLog) Tail(int) string { return "" }
+
+type demoPrefs struct{}
+
+func (demoPrefs) SetLanguage(string) error { return nil }
 
 type noBlock struct{}
 
@@ -181,11 +209,15 @@ func run(out string) error {
 	router := bot.NewRouter()
 	for _, f := range []bot.Feature{
 		&system.Feature{Proc: proc, Metrics: metrics, Run: runner,
-			Services: sys.ParseServices("dnsmasq,dropbear,firewall,uhttpd")},
+			Services: sys.ParseServices("dnsmasq,dropbear,odhcpd,uhttpd")},
 		&wolui.Feature{M: mgr, T: tr, Discovery: wol.Discovery{Devices: store}},
 		&network.Feature{Proc: proc, Metrics: metrics, WANIface: "eth0", PingHost: "1.1.1.1", Pinger: home,
 			HTTP: &http.Client{Transport: fixedIP{}}},
 		&clients.Feature{LeasesPath: filepath.Join(root, "tmp/dhcp.leases"), Blocker: noBlock{}, WOL: store},
+		&packages.Feature{PM: demoPM{}},
+		&admin.Backup{Run: runner, TmpDir: root},
+		&admin.Logs{Log: demoLog{}},
+		&admin.Language{T: tr, Prefs: demoPrefs{}},
 	} {
 		f.Register(router)
 	}
@@ -220,6 +252,8 @@ func run(out string) error {
 	take("network", "")
 	press("cl:list")
 	take("clients", "")
+	press("pkg:show")
+	take("packages", "")
 
 	press("wol:wake:" + laptop.ID)
 	waitFor(msgr, "Ноутбук</b>… 6")

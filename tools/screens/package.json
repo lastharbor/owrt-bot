@@ -1,0 +1,9 @@
+{
+  "name": "owrt-bot-screens",
+  "private": true,
+  "type": "module",
+  "description": "README screenshots: node shoot.mjs screens.json ../../docs/img",
+  "devDependencies": {
+    "puppeteer-core": "24.10.0"
+  }
+}
