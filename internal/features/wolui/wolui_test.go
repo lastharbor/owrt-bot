@@ -47,6 +47,7 @@ func (noARP) Probe(context.Context, string, net.IP) (net.HardwareAddr, error) { 
 type nopOut struct{}
 
 func (nopOut) Broadcast(context.Context, string) {}
+func (nopOut) BroadcastTemp(context.Context, string, time.Duration) {}
 
 type env struct {
 	b     *bot.Bot
@@ -282,5 +283,29 @@ func TestChatStaysClean(t *testing.T) {
 	}
 	if !e.msgr.WasDeleted(firstMenu) {
 		t.Error("old menu not removed when a new one was sent")
+	}
+}
+
+func TestLogScreen(t *testing.T) {
+	e := setup(t)
+	d, _ := e.store.AddDevice(wol.Device{Name: "GamePC", MAC: "02:5e:10:aa:bb:01", Notify: true})
+	_ = e.store.AddEvent(wol.LogEntry{DeviceID: d.ID, Device: d.Name, Kind: wol.EventOnline, At: time.Now()})
+
+	// Global log screen
+	m := e.press("wol:log")
+	if !strings.Contains(m.Text, "GamePC") {
+		t.Errorf("global log screen missing event: %q", m.Text)
+	}
+
+	// Device-specific log screen
+	m = e.press("wol:log:" + d.ID)
+	if !strings.Contains(m.Text, "GamePC") {
+		t.Errorf("device log screen missing event: %q", m.Text)
+	}
+
+	// Clear log
+	e.press("wol:logclr")
+	if len(e.store.Events()) != 0 {
+		t.Errorf("clear log failed")
 	}
 }

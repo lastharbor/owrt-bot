@@ -19,6 +19,7 @@ import (
 // Broadcaster sends a message to every allowed chat.
 type Broadcaster interface {
 	Broadcast(ctx context.Context, text string)
+	BroadcastTemp(ctx context.Context, text string, ttl time.Duration)
 }
 
 // KeyProvider exposes the public SSH key users must install on PCs.
@@ -43,10 +44,13 @@ func (f *Feature) Register(r *bot.Router) {
 	r.Command("wol", "cmd_wol", f.cmdList)
 	r.Command("wake", "cmd_wake", f.cmdWake)
 	r.Command("status", "cmd_status", f.cmdStatus)
+	r.Command("wollog", "cmd_wollog", f.cmdLog)
 
 	// devices
 	r.Callback("wol:list", func(c *bot.Ctx) error { return f.showList(c, false) })
 	r.Callback("wol:refresh", func(c *bot.Ctx) error { c.Ack(); return f.showList(c, true) })
+	r.Callback("wol:log", f.showLog)
+	r.Callback("wol:logclr", f.clearLog)
 	r.Callback("wol:dev", f.showDevice)
 	r.Callback("wol:check", f.check)
 	r.Callback("wol:add", f.showCandidates)

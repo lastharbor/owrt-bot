@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Repository interfaces are split by aggregate so each consumer depends
@@ -37,12 +38,20 @@ type ScheduleRepo interface {
 	DeleteSchedule(id string) error
 }
 
+type EventRepo interface {
+	Events() []LogEntry
+	DeviceEvents(deviceID string) []LogEntry
+	AddEvent(e LogEntry) error
+	ClearEvents() error
+}
+
 type data struct {
 	Version   int        `json:"version"`
 	Seq       int        `json:"seq"`
 	Devices   []Device   `json:"devices"`
 	Groups    []Group    `json:"groups"`
 	Schedules []Schedule `json:"schedules"`
+	Events    []LogEntry `json:"events,omitempty"`
 }
 
 // JSONStore keeps everything in one small JSON file, rewritten atomically
@@ -57,6 +66,7 @@ var _ interface {
 	DeviceRepo
 	GroupRepo
 	ScheduleRepo
+	EventRepo
 } = (*JSONStore)(nil)
 
 // OpenJSON loads path, or starts empty if it does not exist yet.
@@ -99,6 +109,7 @@ func (s *JSONStore) mutate(fn func(d *data) error) error {
 	before.Devices = slices.Clone(s.d.Devices)
 	before.Groups = slices.Clone(s.d.Groups)
 	before.Schedules = slices.Clone(s.d.Schedules)
+	before.Events = slices.Clone(s.d.Events)
 	if err := fn(&s.d); err != nil {
 		s.d = before
 		return err
@@ -329,4 +340,44 @@ func ImportLegacy(repo DeviceRepo, entries map[string]string) int {
 		}
 	}
 	return n
+}
+
+const maxEvents = 50
+
+func (s *JSONStore) Events() []LogEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return slices.Clone(s.d.Events)
+}
+
+func (s *JSONStore) DeviceEvents(deviceID string) []LogEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []LogEntry
+	for _, e := range s.d.Events {
+		if e.DeviceID == deviceID {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func (s *JSONStore) AddEvent(e LogEntry) error {
+	if e.At.IsZero() {
+		e.At = time.Now()
+	}
+	return s.mutate(func(d *data) error {
+		d.Events = append(d.Events, e)
+		if len(d.Events) > maxEvents {
+			d.Events = d.Events[len(d.Events)-maxEvents:]
+		}
+		return nil
+	})
+}
+
+func (s *JSONStore) ClearEvents() error {
+	return s.mutate(func(d *data) error {
+		d.Events = nil
+		return nil
+	})
 }

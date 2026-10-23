@@ -11,6 +11,7 @@ type Store interface {
 	DeviceRepo
 	GroupRepo
 	ScheduleRepo
+	EventRepo
 }
 
 // Manager is the facade the UI and the scheduler use, so "wake and wait",

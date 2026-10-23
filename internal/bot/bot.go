@@ -78,6 +78,43 @@ func (b *Bot) Broadcast(ctx context.Context, text string) {
 	}
 }
 
+// BroadcastTemp sends text to every allowed chat and deletes it after ttl.
+func (b *Bot) BroadcastTemp(ctx context.Context, text string, ttl time.Duration) {
+	for _, chat := range b.opt.AllowedChats {
+		id, err := b.msgr.Send(ctx, chat, text, nil)
+		if err != nil {
+			b.log.Warn("broadcast temp failed", "chat", chat, "err", err)
+			continue
+		}
+		if ttl > 0 && id != 0 {
+			b.deleteAfter(chat, id, ttl)
+		}
+	}
+}
+
+func (b *Bot) deleteAfter(chat int64, id int, delay time.Duration) {
+	b.wg.Add(1)
+	go func() {
+		defer b.wg.Done()
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		if b.ctx != nil {
+			select {
+			case <-timer.C:
+			case <-b.ctx.Done():
+				return
+			}
+		} else {
+			<-timer.C
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := b.msgr.Delete(ctx, chat, id); err != nil {
+			b.log.Warn("delete temp message failed", "chat", chat, "msg", id, "err", err)
+		}
+	}()
+}
+
 // Run long-polls src until ctx ends, then waits for in-flight work.
 func (b *Bot) Run(ctx context.Context, src UpdateSource) {
 	b.ctx = ctx

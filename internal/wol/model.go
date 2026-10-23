@@ -58,6 +58,27 @@ type Device struct {
 	Power  *Power `json:"power,omitempty"`
 }
 
+// EventKind classifies on/off and power actions.
+type EventKind string
+
+const (
+	EventOnline   EventKind = "online"
+	EventOffline  EventKind = "offline"
+	EventAsleep   EventKind = "asleep"
+	EventWake     EventKind = "wake"
+	EventShutdown EventKind = "shutdown"
+	EventReboot   EventKind = "reboot"
+	EventSleep    EventKind = "sleep"
+)
+
+// LogEntry is a recorded power or presence event for a device.
+type LogEntry struct {
+	At       time.Time `json:"at"`
+	DeviceID string    `json:"device_id,omitempty"`
+	Device   string    `json:"device"`
+	Kind     EventKind `json:"kind"`
+}
+
 // HW returns the parsed MAC.
 func (d Device) HW() net.HardwareAddr {
 	hw, _ := net.ParseMAC(d.MAC)

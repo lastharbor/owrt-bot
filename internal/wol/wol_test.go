@@ -62,6 +62,17 @@ func TestStoreCRUDAndCascade(t *testing.T) {
 	if sc := s2.Schedules(); len(sc) != 1 || sc[0].Target.Kind != TargetGroup {
 		t.Errorf("device schedule not cascaded: %+v", sc)
 	}
+
+	// Event log
+	s2.AddEvent(LogEntry{DeviceID: "d1", Device: "PC", Kind: EventOnline})
+	s2.AddEvent(LogEntry{DeviceID: "d1", Device: "PC", Kind: EventOffline})
+	if len(s2.Events()) != 2 || len(s2.DeviceEvents("d1")) != 2 {
+		t.Errorf("events: %+v", s2.Events())
+	}
+	s2.ClearEvents()
+	if len(s2.Events()) != 0 {
+		t.Errorf("clear failed: %+v", s2.Events())
+	}
 }
 
 func TestImportLegacy(t *testing.T) {

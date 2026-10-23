@@ -46,6 +46,12 @@ func (f *Feature) wake(c *bot.Ctx) error {
 	}
 	c.Toast(c.T("wol_sent_toast", "name", d.Name))
 	c.Ack()
+	_ = f.M.Store.AddEvent(wol.LogEntry{
+		At:       f.now(),
+		DeviceID: d.ID,
+		Device:   d.Name,
+		Kind:     wol.EventWake,
+	})
 	if err := c.Show(progressScreen(c, d, 0, nil)); err != nil {
 		return err
 	}
@@ -189,8 +195,27 @@ func (f *Feature) match(q string) (string, []wol.Device) {
 
 // ---- background hooks wired in main
 
-// OnPresence reports watcher events to the chat.
+// OnPresence reports watcher events to the chat, records them in the event log,
+// and auto-deletes the chat notification after 10 seconds to keep the chat clean.
 func (f *Feature) OnPresence(ev wol.Event) {
+	var kind wol.EventKind
+	switch ev.To {
+	case wol.StatusOnline:
+		kind = wol.EventOnline
+	case wol.StatusAsleep:
+		kind = wol.EventAsleep
+	case wol.StatusOffline:
+		kind = wol.EventOffline
+	}
+	if kind != "" {
+		_ = f.M.Store.AddEvent(wol.LogEntry{
+			At:       ev.At,
+			DeviceID: ev.Device.ID,
+			Device:   ev.Device.Name,
+			Kind:     kind,
+		})
+	}
+
 	key := map[wol.Status]string{
 		wol.StatusOnline:  "wol_ev_online",
 		wol.StatusAsleep:  "wol_ev_asleep",
@@ -199,7 +224,7 @@ func (f *Feature) OnPresence(ev wol.Event) {
 	if key == "" {
 		return
 	}
-	f.Out.Broadcast(context.Background(), f.T.T(key, "name", esc(ev.Device.Name), "time", ev.At.Format("15:04")))
+	f.Out.BroadcastTemp(context.Background(), f.T.T(key, "name", esc(ev.Device.Name), "time", ev.At.Format("15:04")), 10*time.Second)
 }
 
 // OnSchedule wakes a scheduled target and reports the outcome.

@@ -261,6 +261,23 @@ func (f *Feature) doPower(c *bot.Ctx) error {
 	if err := f.M.PowerAction(c, d, a); err != nil {
 		return f.showCard(c, d, c.T("wol_power_fail", "action", c.T(key))+" "+errText(c.T, err))
 	}
+	var kind wol.EventKind
+	switch a {
+	case wol.ActShutdown:
+		kind = wol.EventShutdown
+	case wol.ActReboot:
+		kind = wol.EventReboot
+	case wol.ActSleep:
+		kind = wol.EventSleep
+	}
+	if kind != "" {
+		_ = f.M.Store.AddEvent(wol.LogEntry{
+			At:       f.now(),
+			DeviceID: d.ID,
+			Device:   d.Name,
+			Kind:     kind,
+		})
+	}
 	sent := c.T("wol_power_done", "action", c.T(key), "name", esc(d.Name))
 	last, _ := f.M.Presence.Cached(d.ID, time.Hour)
 	if err := c.Show(f.cardScreen(c, d, last, sent)); err != nil || a == wol.ActReboot {

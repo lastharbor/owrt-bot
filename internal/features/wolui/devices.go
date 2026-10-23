@@ -37,8 +37,8 @@ func (f *Feature) listScreen(c *bot.Ctx, maxAge time.Duration) bot.Screen {
 		lines = append(lines, "", c.T("wol_legend"))
 	}
 	kb.Row(bot.Btn(c.T("btn_wol_add"), "wol:add"), bot.Btn(c.T("btn_wol_groups"), "wol:groups"))
-	kb.Row(bot.Btn(c.T("btn_wol_sched"), "wol:sched"), bot.Btn(c.T("btn_refresh"), "wol:refresh"))
-	kb.Row(bot.Btn(c.T("btn_back"), "menu:main"))
+	kb.Row(bot.Btn(c.T("btn_wol_sched"), "wol:sched"), bot.Btn(c.T("btn_wol_log"), "wol:log"))
+	kb.Row(bot.Btn(c.T("btn_refresh"), "wol:refresh"), bot.Btn(c.T("btn_back"), "menu:main"))
 	return bot.Screen{Text: strings.Join(lines, "\n"), Keyboard: kb.Build()}
 }
 
@@ -105,7 +105,7 @@ func (f *Feature) cardScreen(c *bot.Ctx, d wol.Device, r wol.Result, extra strin
 	}
 	kb.Row(bot.Btn(c.T("btn_rename"), "wol:ren", d.ID), bot.Btn("🌐 IP", "wol:ip", d.ID), bot.Btn("🔗 MAC", "wol:mac", d.ID)).
 		Row(bot.Btn(notifyBtn, "wol:ntf", d.ID), bot.Btn(powerBtn, "wol:pwr", d.ID)).
-		Row(bot.Btn(c.T("btn_delete"), "wol:del", d.ID)).
+		Row(bot.Btn(c.T("btn_wol_dev_log"), "wol:log", d.ID), bot.Btn(c.T("btn_delete"), "wol:del", d.ID)).
 		Row(bot.Btn(c.T("btn_to_list"), "wol:list"))
 	return bot.Screen{Text: text, Keyboard: kb.Build()}
 }
