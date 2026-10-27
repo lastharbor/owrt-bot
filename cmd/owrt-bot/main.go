@@ -25,6 +25,7 @@ import (
 	"github.com/lastharbor/owrt-bot/internal/features/network"
 	"github.com/lastharbor/owrt-bot/internal/features/packages"
 	"github.com/lastharbor/owrt-bot/internal/features/system"
+	"github.com/lastharbor/owrt-bot/internal/features/vpnwatch"
 	"github.com/lastharbor/owrt-bot/internal/features/wifi"
 	"github.com/lastharbor/owrt-bot/internal/features/wolui"
 	"github.com/lastharbor/owrt-bot/internal/i18n"
@@ -48,6 +49,7 @@ func main() {
 	speed := flag.Bool("speedtest", false, "measure WAN download speed and exit")
 	check := flag.Bool("check", false, "validate the settings and the bot token, print the bot name and exit")
 	migrate := flag.Bool("migrate", false, "copy the INI config into "+config.UCIPath+" if that does not exist yet")
+	vpncheck := flag.Bool("vpncheck", false, "check every ZeroBlock section through its tunnel once, print the result and exit")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version)
@@ -61,6 +63,8 @@ func main() {
 		run = checkOnce
 	case *migrate:
 		run = migrateOnce
+	case *vpncheck:
+		run = vpnCheckOnce
 	case *speed:
 		run = speedOnce
 	case *wakeMAC != "":
@@ -292,6 +296,7 @@ func run(cfgPath string) error {
 	go (&wol.Scheduler{Repo: store, Fire: wolFeature.OnSchedule, Log: log}).Run(ctx)
 	go metrics.Run(ctx)
 	go (&alerts.Monitor{Cfg: cfg.Alerts, Proc: proc, Ping: pinger, T: tr, Out: b, Log: log}).Run(ctx)
+	go (&vpnwatch.Monitor{Cfg: cfg.VPNWatch, API: &vpnwatch.Clash{Endpoint: clashEndpoint(cfg.VPNWatch)}, T: tr, Out: b, Log: log}).Run(ctx)
 	go publishCommands(ctx, tg, router, tr, log)
 	if setupSrv != nil {
 		go func() {
@@ -373,4 +378,34 @@ func speedOnce(string) error {
 	}
 	fmt.Printf("%.0f Mbit/s via %s (%d MB in %.1f s)"+string(rune(10)), r.Mbps(), r.Host, r.Bytes>>20, r.Elapsed.Seconds())
 	return nil
+}
+
+// vpnCheckOnce runs one round of the VPN group checks without Telegram.
+func vpnCheckOnce(cfgPath string) error {
+	cfg, err := loadConfig(cfgPath)
+	if err != nil {
+		return err
+	}
+	find := clashEndpoint(cfg.VPNWatch)
+	ep, err := find()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Clash API %s, from %s\n", ep.Base, ep.Source)
+	m := &vpnwatch.Monitor{Cfg: cfg.VPNWatch, API: &vpnwatch.Clash{Endpoint: find}}
+	res, err := m.CheckAll(context.Background())
+	if err != nil {
+		return err
+	}
+	fmt.Print(vpnwatch.Report(res))
+	return nil
+}
+
+// clashEndpoint is the address from the settings, or else whichever
+// running engine exposes a Clash API.
+func clashEndpoint(c config.VPNWatch) vpnwatch.EndpointFunc {
+	if c.Controller != "" {
+		return vpnwatch.StaticEndpoint(c.Controller, c.Secret)
+	}
+	return vpnwatch.Discover("/proc")
 }

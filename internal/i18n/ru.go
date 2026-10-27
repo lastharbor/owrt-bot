@@ -298,4 +298,8 @@ var RU = Catalog{
 	"alert_disk":     "🗄 Диск почти заполнен: {v}%",
 	"alert_temp":     "🌡 Перегрев: {v} °C",
 	"alert_wan_back": "🌐 Интернет пропадал: {host} не отвечал с {since}, {dur}. Сейчас всё в порядке.",
+	"vpn_down":       "🔴 VPN: перестали работать маршруты",
+	"vpn_line_down":  "• <b>{name}</b>: {host} не открывается ({err})",
+	"vpn_back":       "🟢 VPN: маршруты снова работают",
+	"vpn_line_back":  "• <b>{name}</b>: не работал с {since}, {dur}",
 }

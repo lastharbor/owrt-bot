@@ -91,6 +91,19 @@ type Alerts struct {
 	WANOkNeed   int
 }
 
+// VPNWatch checks proxy groups through the Clash API (mihomo, sing-box).
+type VPNWatch struct {
+	Enabled    bool
+	Interval   time.Duration
+	FailNeed   int
+	OkNeed     int
+	DefaultURL string
+	Checks     map[string]string // group -> URL of the service it carries
+	Groups     []string          // groups to check; empty = every top-level group
+	Controller string            // Clash API address; empty = find a running engine
+	Secret     string
+}
+
 // Paths groups the files the bot owns.
 type Paths struct {
 	DataDir string // wol.json, prefs.json, ssh key, known_hosts
@@ -102,6 +115,7 @@ type Config struct {
 	Telegram     Telegram
 	Language     string
 	Alerts       Alerts
+	VPNWatch     VPNWatch
 	Paths        Paths
 	LogMaxKB     int
 	LogLevel     string
@@ -145,6 +159,16 @@ func FromINI(ini INI) (*Config, error) {
 			WANFailNeed: int(ini.num("alerts", "wan_fail_need", 3)),
 			WANOkNeed:   int(ini.num("alerts", "wan_ok_need", 3)),
 		},
+		VPNWatch: VPNWatch{
+			Enabled:    ini.str("vpnwatch", "enabled", "1") != "0",
+			Interval:   time.Duration(ini.num("vpnwatch", "interval_sec", 300)) * time.Second,
+			FailNeed:   int(ini.num("vpnwatch", "fail_need", 2)),
+			OkNeed:     int(ini.num("vpnwatch", "ok_need", 2)),
+			DefaultURL: ini.str("vpnwatch", "default_url", "https://www.gstatic.com/generate_204"),
+			Checks:     map[string]string{},
+			Controller: ini.str("vpnwatch", "controller", ""),
+			Secret:     ini.str("vpnwatch", "secret", ""),
+		},
 		Paths: Paths{
 			DataDir: ini.str("bot", "data_dir", "/etc/owrt-bot"),
 			LogFile: ini.str("logging", "file", "/var/log/owrt-bot.log"),
@@ -177,5 +201,23 @@ func FromINI(ini INI) (*Config, error) {
 	if c.Alerts.Interval < 10*time.Second {
 		c.Alerts.Interval = 10 * time.Second
 	}
+	// "section=url" pairs; a URL may itself contain "=", so cut once.
+	for _, s := range strings.Split(ini.str("vpnwatch", "checks", ""), ",") {
+		name, u, ok := strings.Cut(strings.TrimSpace(s), "=")
+		if !ok || name == "" || u == "" {
+			continue
+		}
+		c.VPNWatch.Checks[strings.TrimSpace(name)] = strings.TrimSpace(u)
+	}
+	for _, g := range strings.Split(ini.str("vpnwatch", "groups", ""), ",") {
+		if g = strings.TrimSpace(g); g != "" {
+			c.VPNWatch.Groups = append(c.VPNWatch.Groups, g)
+		}
+	}
+	if c.VPNWatch.Interval < time.Minute {
+		c.VPNWatch.Interval = time.Minute
+	}
+	c.VPNWatch.FailNeed = max(c.VPNWatch.FailNeed, 1)
+	c.VPNWatch.OkNeed = max(c.VPNWatch.OkNeed, 1)
 	return c, nil
 }

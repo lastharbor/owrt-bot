@@ -284,4 +284,8 @@ var EN = Catalog{
 	"alert_disk":     "🗄 Disk almost full: {v}%",
 	"alert_temp":     "🌡 Overheating: {v} °C",
 	"alert_wan_back": "🌐 Internet was down: {host} unreachable since {since}, {dur}. All good now.",
+	"vpn_down":       "🔴 VPN: routes stopped working",
+	"vpn_line_down":  "• <b>{name}</b>: {host} does not open ({err})",
+	"vpn_back":       "🟢 VPN: routes work again",
+	"vpn_line_back":  "• <b>{name}</b>: down since {since}, {dur}",
 }
