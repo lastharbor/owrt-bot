@@ -297,6 +297,13 @@ func (f *Feature) doPower(c *bot.Ctx) error {
 				return
 			}
 		}
+		// The command was accepted but the device is still up: a program
+		// blocked the shutdown or the wrapper failed silently. Saying so
+		// beats leaving "sent" on screen as if it had worked.
+		if !bg.Stale() {
+			r := f.M.Presence.Check(bg, d)
+			_ = bg.Show(f.cardScreen(bg, d, r, sent+"\n"+bg.T("wol_still_up", "time", secs(bg.T, time.Since(start)))))
+		}
 	})
 	return nil
 }

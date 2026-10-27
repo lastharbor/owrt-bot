@@ -202,3 +202,17 @@ func TestWeekdays(t *testing.T) {
 		t.Error("toggle failed")
 	}
 }
+
+func TestLastLine(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                              "",
+		"one\n":                         "one",
+		"first\r\n  last reason \r\n\n": "last reason",
+		"\x8e\xe2\xaa\xa0\xa7\xa0\xad\xae \xa2 \xa4\xae\xe1\xe2\xe3\xaf\xa5.(5)\r\n": "Отказано в доступе.(5)",
+		"\xf0\xf1 \xc4": "Ёё ?",
+	} {
+		if got := lastLine(in); got != want {
+			t.Errorf("lastLine(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

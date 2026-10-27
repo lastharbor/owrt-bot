@@ -107,12 +107,44 @@ New-Item -Path $hide -Force | Out-Null
 Set-ItemProperty -Path $hide -Name $BotUser -Value 0 -Type DWord
 Say "$BotUser скрыт с экрана входа"
 
+# A key-based SSH sign-in is a network logon, and Windows treats shutdown
+# from a network logon as remote: it needs SeRemoteShutdownPrivilege
+# ("Force shutdown from a remote system"), not SeShutdownPrivilege, or
+# shutdown.exe fails with "Access is denied (5)". Only that right is added.
+Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices; using System.Security.Principal;
+public static class OwrtLsa {
+	[StructLayout(LayoutKind.Sequential)] struct LsaString { public ushort Length, MaximumLength; public IntPtr Buffer; }
+	[StructLayout(LayoutKind.Sequential)] struct LsaAttrs { public int Length; public IntPtr RootDirectory, ObjectName; public int Attributes; public IntPtr SecurityDescriptor, SecurityQualityOfService; }
+	[DllImport("advapi32.dll")] static extern uint LsaOpenPolicy(IntPtr system, ref LsaAttrs attrs, int access, out IntPtr policy);
+	[DllImport("advapi32.dll")] static extern uint LsaAddAccountRights(IntPtr policy, byte[] sid, LsaString[] rights, uint count);
+	[DllImport("advapi32.dll")] static extern uint LsaClose(IntPtr policy);
+	[DllImport("advapi32.dll")] static extern int LsaNtStatusToWinError(uint status);
+	public static void Grant(string user, string right) {
+		var sid = (SecurityIdentifier)new NTAccount(user).Translate(typeof(SecurityIdentifier));
+		var raw = new byte[sid.BinaryLength]; sid.GetBinaryForm(raw, 0);
+		var attrs = new LsaAttrs(); IntPtr policy;
+		uint st = LsaOpenPolicy(IntPtr.Zero, ref attrs, 0x810, out policy); // POLICY_CREATE_ACCOUNT | POLICY_LOOKUP_NAMES
+		if (st != 0) throw new System.ComponentModel.Win32Exception(LsaNtStatusToWinError(st));
+		var r = new LsaString[1];
+		r[0].Buffer = Marshal.StringToHGlobalUni(right);
+		r[0].Length = (ushort)(right.Length * 2); r[0].MaximumLength = (ushort)(r[0].Length + 2);
+		try { st = LsaAddAccountRights(policy, raw, r, 1); } finally { Marshal.FreeHGlobal(r[0].Buffer); LsaClose(policy); }
+		if (st != 0) throw new System.ComponentModel.Win32Exception(LsaNtStatusToWinError(st));
+	}
+}
+'@
+[OwrtLsa]::Grant($BotUser, 'SeRemoteShutdownPrivilege')
+Say "$BotUser может выключать ПК по сети (право SeRemoteShutdownPrivilege)"
+
 # 3. What the key may run
 @'
 # Called by sshd for the owrt-bot key; the router sends one word.
+# /f closes programs without asking, so an unsaved document or a hung
+# app cannot hold the PC on.
 switch ($env:SSH_ORIGINAL_COMMAND) {
-	'off'    { shutdown /s /t 5 /c "owrt-bot" }
-	'reboot' { shutdown /r /t 5 /c "owrt-bot" }
+	'off'    { shutdown /s /f /t 5 /c "owrt-bot" }
+	'reboot' { shutdown /r /f /t 5 /c "owrt-bot" }
 	'sleep'  {
 		Add-Type -AssemblyName System.Windows.Forms
 		[void][System.Windows.Forms.Application]::SetSuspendState('Suspend', $false, $false)
@@ -120,6 +152,9 @@ switch ($env:SSH_ORIGINAL_COMMAND) {
 	'check'  { 'ok' }
 	default  { Write-Error "owrt-bot: unknown command '$env:SSH_ORIGINAL_COMMAND'"; exit 1 }
 }
+# powershell -File exits 0 otherwise, and the bot would report a failed
+# shutdown as done.
+exit $LASTEXITCODE
 '@ | Set-Content -Path $Power -Encoding ascii
 icacls $Dir /inheritance:r /grant '*S-1-5-32-544:(OI)(CI)F' /grant '*S-1-5-18:(OI)(CI)F' /grant '*S-1-5-32-545:(OI)(CI)RX' | Out-Null
 

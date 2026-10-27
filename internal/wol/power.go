@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -41,12 +42,16 @@ var ErrHostKeyChanged = errors.New("wol: SSH host key changed")
 // ErrNoPower means the device has no SSH settings.
 var ErrNoPower = errors.New("wol: power control not configured")
 
+// ErrDenied means Windows refused the command (exit status 5). For a key
+// login that is almost always a missing SeRemoteShutdownPrivilege.
+var ErrDenied = errors.New("wol: access denied on the device")
+
 // commands per OS. Windows: sleep goes through .NET so it suspends even
 // when hibernation is on (rundll32 SetSuspendState would hibernate).
 var commands = map[OS]map[Action]string{
 	Windows: {
-		ActShutdown: `shutdown /s /t 5 /c "owrt-bot"`,
-		ActReboot:   `shutdown /r /t 5 /c "owrt-bot"`,
+		ActShutdown: `shutdown /s /f /t 5 /c "owrt-bot"`,
+		ActReboot:   `shutdown /r /f /t 5 /c "owrt-bot"`,
 		ActSleep:    `powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [void][System.Windows.Forms.Application]::SetSuspendState('Suspend', $false, $false)"`,
 	},
 	Linux: {
@@ -129,6 +134,10 @@ func (s *SSHPower) Do(ctx context.Context, d Device, ip string, a Action) error 
 	if errors.As(err, &missing) || errors.Is(err, io.EOF) {
 		return nil
 	}
+	var exit *ssh.ExitError
+	if d.Power.OS == Windows && errors.As(err, &exit) && exit.ExitStatus() == 5 {
+		return fmt.Errorf("%w (%v)", ErrDenied, err)
+	}
 	return err
 }
 
@@ -176,7 +185,54 @@ func (s *SSHPower) run(ctx context.Context, d Device, ip, cmd string) ([]byte, e
 		return nil, err
 	}
 	defer sess.Close()
-	return sess.Output(cmd)
+	var stderr strings.Builder
+	sess.Stderr = &stderr
+	out, err := sess.Output(cmd)
+	var exit *ssh.ExitError
+	if errors.As(err, &exit) {
+		if msg := lastLine(stderr.String()); msg != "" {
+			err = fmt.Errorf("%w: %s", err, msg)
+		}
+	}
+	return out, err
+}
+
+// lastLine is the last non-empty line of a command's stderr, which is
+// where both shutdown.exe and systemctl put the reason. Windows writes it
+// in the OEM code page, which on Russian systems is CP866.
+func lastLine(s string) string {
+	if !utf8.ValidString(s) {
+		s = fromCP866(s)
+	}
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	l := strings.TrimSpace(lines[len(lines)-1])
+	if r := []rune(l); len(r) > 200 {
+		l = string(r[:200]) + "…"
+	}
+	return l
+}
+
+// fromCP866 decodes the Cyrillic part of CP866; box drawing and the rest
+// of the upper half are not expected in an error message and become "?".
+func fromCP866(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c < 0x80:
+			b.WriteByte(c)
+		case c <= 0xAF: // А..я up to п
+			b.WriteRune(rune(c-0x80) + 'А')
+		case c >= 0xE0 && c <= 0xEF: // р..я
+			b.WriteRune(rune(c-0xE0) + 'р')
+		case c == 0xF0:
+			b.WriteRune('Ё')
+		case c == 0xF1:
+			b.WriteRune('ё')
+		default:
+			b.WriteByte('?')
+		}
+	}
+	return b.String()
 }
 
 // tofu pins the host key on first contact and rejects changes later.

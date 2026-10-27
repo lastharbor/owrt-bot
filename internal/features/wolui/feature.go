@@ -170,6 +170,8 @@ func errText(t func(string, ...any) string, err error) string {
 		return t("wol_err_hostkey")
 	case errors.Is(err, wol.ErrNoPower):
 		return t("wol_err_nopower")
+	case errors.Is(err, wol.ErrDenied):
+		return t("wol_err_denied")
 	case err != nil && strings.Contains(err.Error(), "unable to authenticate"):
 		return t("wol_err_auth")
 	case err != nil && (strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "i/o timeout")):

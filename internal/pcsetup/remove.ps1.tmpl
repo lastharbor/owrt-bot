@@ -41,6 +41,30 @@ Say 'Ключ роутера и правило sshd удалены'
 # The user and its profile
 if (Get-LocalUser -Name $BotUser -ErrorAction SilentlyContinue) {
 	$sid = (Get-LocalUser -Name $BotUser).SID.Value
+	# Rights are stored by SID and outlive the user, so drop the remote
+	# shutdown right first.
+	Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices; using System.Security.Principal;
+public static class OwrtLsa {
+	[StructLayout(LayoutKind.Sequential)] struct LsaString { public ushort Length, MaximumLength; public IntPtr Buffer; }
+	[StructLayout(LayoutKind.Sequential)] struct LsaAttrs { public int Length; public IntPtr RootDirectory, ObjectName; public int Attributes; public IntPtr SecurityDescriptor, SecurityQualityOfService; }
+	[DllImport("advapi32.dll")] static extern uint LsaOpenPolicy(IntPtr system, ref LsaAttrs attrs, int access, out IntPtr policy);
+	[DllImport("advapi32.dll")] static extern uint LsaRemoveAccountRights(IntPtr policy, byte[] sid, bool all, LsaString[] rights, uint count);
+	[DllImport("advapi32.dll")] static extern uint LsaClose(IntPtr policy);
+	public static uint Revoke(string sidText, string right) {
+		var sid = new SecurityIdentifier(sidText);
+		var raw = new byte[sid.BinaryLength]; sid.GetBinaryForm(raw, 0);
+		var attrs = new LsaAttrs(); IntPtr policy;
+		uint st = LsaOpenPolicy(IntPtr.Zero, ref attrs, 0x810, out policy);
+		if (st != 0) return st;
+		var r = new LsaString[1];
+		r[0].Buffer = Marshal.StringToHGlobalUni(right);
+		r[0].Length = (ushort)(right.Length * 2); r[0].MaximumLength = (ushort)(r[0].Length + 2);
+		try { return LsaRemoveAccountRights(policy, raw, false, r, 1); } finally { Marshal.FreeHGlobal(r[0].Buffer); LsaClose(policy); }
+	}
+}
+'@
+	if ([OwrtLsa]::Revoke($sid, 'SeRemoteShutdownPrivilege') -ne 0) { Warn 'не удалось снять право SeRemoteShutdownPrivilege' }
 	Remove-LocalUser -Name $BotUser
 	Get-CimInstance Win32_UserProfile | Where-Object SID -eq $sid | Remove-CimInstance -ErrorAction SilentlyContinue
 	Say "Пользователь $BotUser удалён"

@@ -46,7 +46,7 @@ func (noARP) Probe(context.Context, string, net.IP) (net.HardwareAddr, error) { 
 
 type nopOut struct{}
 
-func (nopOut) Broadcast(context.Context, string) {}
+func (nopOut) Broadcast(context.Context, string)                    {}
 func (nopOut) BroadcastTemp(context.Context, string, time.Duration) {}
 
 type env struct {
