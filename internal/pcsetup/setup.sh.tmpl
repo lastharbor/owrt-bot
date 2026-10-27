@@ -1,17 +1,21 @@
-#!/bin/bash
+#!/bin/sh
 # owrt-bot: lets the router shut down, reboot and suspend this PC, and
 # turns on Wake-on-LAN. Generated for device "{{.Device}}".
 #
-#   curl -fsSL {{.ScriptURL}} | bash
+#   curl -fsSL {{.ScriptURL}} | sh
+#   wget -qO- {{.ScriptURL}} | sh
 #
+# Plain POSIX sh, so it also runs where there is no bash (Alpine, BusyBox).
 # What it does:
-#   1. re-runs itself through sudo if it is not root;
-#   2. installs and starts sshd;
+#   1. re-runs itself through sudo or doas if it is not root;
+#   2. installs and starts sshd (systemd, OpenRC or SysV);
 #   3. creates a system user "owrt-bot" (no password, sign-in by key only);
 #   4. adds the router's key with restrict,command=: with that key only
 #      off / reboot / sleep / check can run, no shell, no forwarding;
-#   5. lets that user run systemctl poweroff/reboot/suspend through sudo;
-#   6. turns on wake on magic packet;
+#   5. installs sudo if needed and lets that user run exactly the power
+#      commands of this system;
+#   6. turns on wake on magic packet on the physical port and keeps it on
+#      after reboots (NetworkManager, a systemd unit or OpenRC local.d);
 #   7. reports back to the bot.
 set -eu
 
@@ -25,11 +29,17 @@ POWER=/usr/local/sbin/owrt-bot-power
 say() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31mx\033[0m %s\n' "$*" >&2; exit 1; }
+has() { command -v "$1" >/dev/null 2>&1; }
+
+if has curl; then FETCH="curl -fsSL"; else FETCH="wget -qO-"; fi
 
 if [ "$(id -u)" != 0 ]; then
-	command -v sudo >/dev/null || die "нужны права root: запусти от root или поставь sudo"
-	say "нужны права root, запрашиваю через sudo"
-	exec sudo bash -c "curl -fsSL '$SELF' | bash"
+	if has sudo; then ELEVATE=sudo
+	elif has doas; then ELEVATE=doas
+	else die "нужны права root: запусти от root или поставь sudo"
+	fi
+	say "нужны права root, запрашиваю через $ELEVATE"
+	exec $ELEVATE sh -c "$FETCH '$SELF' | sh"
 fi
 
 # What this script changes is recorded, so the removal script undoes
@@ -39,41 +49,107 @@ mkdir -p /var/lib/owrt-bot
 touch "$STATE"
 remember() { grep -q "^$1=" "$STATE" || echo "$1=$2" >>"$STATE"; }
 
+# pkg_install <apt/dnf/zypper/apk name> <pacman name>
+pkg_install() {
+	if has apt-get; then
+		# A broken repo (Proxmox enterprise without a subscription) must not stop the install.
+		apt-get update -qq || true
+		DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$1"
+	elif has dnf; then dnf install -y -q "$1"
+	elif has yum; then yum install -y -q "$1"
+	elif has pacman; then pacman -S --noconfirm --needed "$2"
+	elif has zypper; then zypper -q install -y "$1"
+	elif has apk; then apk add -q "$1"
+	elif has opkg; then opkg update >/dev/null && opkg install "$1"
+	else return 1
+	fi
+}
+
+if [ -d /run/systemd/system ]; then INIT=systemd
+elif has rc-service; then INIT=openrc
+else INIT=sysv
+fi
+
 # 1. sshd
-if ! command -v sshd >/dev/null 2>&1 && [ ! -x /usr/sbin/sshd ]; then
+if ! has sshd && [ ! -x /usr/sbin/sshd ]; then
 	say "устанавливаю OpenSSH server"
 	remember installed_sshd 1
-	if command -v apt-get >/dev/null; then apt-get update -qq && apt-get install -y -qq openssh-server
-	elif command -v dnf >/dev/null; then dnf install -y -q openssh-server
-	elif command -v pacman >/dev/null; then pacman -S --noconfirm --needed openssh
-	elif command -v zypper >/dev/null; then zypper -q install -y openssh
-	elif command -v apk >/dev/null; then apk add -q openssh
-	else die "не знаю, как поставить openssh-server на этот дистрибутив"
-	fi
+	pkg_install openssh-server openssh || pkg_install openssh openssh ||
+		die "не знаю, как поставить openssh-server на этот дистрибутив"
 fi
-systemctl enable --now ssh >/dev/null 2>&1 || systemctl enable --now sshd >/dev/null 2>&1 || warn "не удалось включить службу ssh"
-say "sshd запущен"
+case $INIT in
+systemd)
+	systemctl enable --now ssh >/dev/null 2>&1 || systemctl enable --now sshd >/dev/null 2>&1 ;;
+openrc)
+	rc-update add sshd default >/dev/null 2>&1 || true
+	rc-service sshd status >/dev/null 2>&1 || rc-service sshd start >/dev/null 2>&1 ;;
+*)
+	service ssh start >/dev/null 2>&1 || service sshd start >/dev/null 2>&1 ||
+		/etc/init.d/sshd start >/dev/null 2>&1 ;;
+esac && say "sshd запущен" || warn "не удалось запустить sshd, запусти службу ssh вручную"
+
+SSHD=$(command -v sshd || echo /usr/sbin/sshd)
+if "$SSHD" -T 2>/dev/null | grep -qiE '^(allowusers|allowgroups) '; then
+	warn "в sshd_config есть AllowUsers/AllowGroups: допиши туда $BOT_USER, иначе роутер не войдёт"
+fi
 
 # 2. The service user. Password "*" means no password login, but unlike a
 # locked "!" account sshd still accepts its key.
 if ! id "$BOT_USER" >/dev/null 2>&1; then
-	useradd --system --create-home --shell /bin/sh --comment "owrt-bot power control" "$BOT_USER"
+	if has useradd; then
+		useradd --system --create-home --shell /bin/sh --comment "owrt-bot power control" "$BOT_USER"
+	else
+		# BusyBox
+		adduser -S -D -h "/home/$BOT_USER" -s /bin/sh -g "owrt-bot power control" "$BOT_USER"
+	fi
 	say "создан пользователь $BOT_USER"
 	remember created_user 1
 fi
-usermod -p '*' "$BOT_USER"
-HOME_DIR=$(getent passwd "$BOT_USER" | cut -d: -f6)
+if has usermod; then usermod -p '*' "$BOT_USER"; else echo "$BOT_USER:*" | chpasswd -e >/dev/null 2>&1; fi
+HOME_DIR=$(awk -F: -v u="$BOT_USER" '$1 == u {print $6}' /etc/passwd)
 GROUP=$(id -gn "$BOT_USER")
 
-# 3. What the key may run
-SYSTEMCTL=$(command -v systemctl)
+# 3. sudo. Proxmox, minimal Debian and Alpine ship without it.
+if ! has sudo; then
+	say "устанавливаю sudo"
+	if pkg_install sudo sudo; then
+		remember installed_sudo 1
+	else
+		warn "не удалось поставить sudo: выключение работать не будет"
+	fi
+fi
+SUDO=$(command -v sudo || echo /usr/bin/sudo)
+
+# 4. The power commands of this system. sudo matches them with their
+# arguments, so the rule allows exactly these and nothing else.
+if [ "$INIT" = systemd ]; then
+	SYSTEMCTL=$(command -v systemctl)
+	OFF="$SYSTEMCTL poweroff"
+	REBOOT="$SYSTEMCTL reboot"
+	SLEEP_CMD="$SYSTEMCTL suspend"
+	SLEEP_RUN="exec $SUDO -n $SLEEP_CMD"
+else
+	OFF=$(command -v poweroff || echo /sbin/poweroff)
+	REBOOT=$(command -v reboot || echo /sbin/reboot)
+	SLEEP_CMD="$(command -v tee || echo /usr/bin/tee) /sys/power/state"
+	SLEEP_RUN="echo mem | $SUDO -n $SLEEP_CMD >/dev/null"
+fi
+if ! grep -qw mem /sys/power/state 2>/dev/null; then
+	# Most servers and VMs: no suspend to RAM.
+	SLEEP_CMD=""
+	SLEEP_RUN="echo 'owrt-bot: this device cannot sleep' >&2; exit 1"
+	warn "сон на этом устройстве не поддерживается, кнопка «Усыпить» работать не будет"
+fi
+
+# Minimal systems (Alpine) have no /usr/local/sbin.
+mkdir -p "${POWER%/*}"
 cat >"$POWER" <<EOF
 #!/bin/sh
 # Called by sshd for the owrt-bot key; the router sends one word.
 case "\$SSH_ORIGINAL_COMMAND" in
-	off) exec sudo -n $SYSTEMCTL poweroff ;;
-	reboot) exec sudo -n $SYSTEMCTL reboot ;;
-	sleep) exec sudo -n $SYSTEMCTL suspend ;;
+	off) exec $SUDO -n $OFF ;;
+	reboot) exec $SUDO -n $REBOOT ;;
+	sleep) $SLEEP_RUN ;;
 	check) echo ok ;;
 	*) echo "owrt-bot: unknown command" >&2; exit 1 ;;
 esac
@@ -86,40 +162,115 @@ chown "$BOT_USER:$GROUP" "$HOME_DIR/.ssh/authorized_keys"
 chmod 600 "$HOME_DIR/.ssh/authorized_keys"
 say "ключ роутера добавлен: им можно только выключить, перезагрузить и усыпить ПК"
 
-# 4. sudo for exactly three commands
-command -v sudo >/dev/null || warn "sudo не установлен: выключение работать не будет"
+mkdir -p /etc/sudoers.d
 RULE=/etc/sudoers.d/owrt-bot
-printf '%s ALL=(root) NOPASSWD: %s poweroff, %s reboot, %s suspend\n' "$BOT_USER" "$SYSTEMCTL" "$SYSTEMCTL" "$SYSTEMCTL" >"$RULE.tmp"
+CMDS="$OFF, $REBOOT${SLEEP_CMD:+, $SLEEP_CMD}"
+printf '%s ALL=(root) NOPASSWD: %s\n' "$BOT_USER" "$CMDS" >"$RULE.tmp"
 chmod 440 "$RULE.tmp"
-if visudo -cf "$RULE.tmp" >/dev/null 2>&1; then
+if has visudo && visudo -cf "$RULE.tmp" >/dev/null 2>&1; then
 	mv "$RULE.tmp" "$RULE"
+	if [ -f /etc/sudoers ] && ! grep -qE '^[#@]includedir[[:space:]]+/etc/sudoers.d' /etc/sudoers; then
+		warn "/etc/sudoers не подключает /etc/sudoers.d: правило $RULE не сработает"
+	fi
 else
 	rm -f "$RULE.tmp"
 	warn "visudo отклонил правило, выключение работать не будет"
 fi
 
-# 5. Wake-on-LAN on the interface that leads to the router
+# 5. Wake-on-LAN. A bridge (Proxmox vmbr0, libvirt br0), a bond or a VLAN
+# has no WoL of its own: the magic packet has to reach the physical port
+# under it, so the stack is walked down through lower_* links. VM taps and
+# veths hang under a bridge too, hence a port backed by a real device wins.
+phys_iface() {
+	i=$1
+	for _ in 1 2 3 4; do
+		[ -e "/sys/class/net/$i/device" ] && break
+		next=""
+		for l in "/sys/class/net/$i"/lower_*; do
+			[ -e "$l" ] || continue
+			p=${l##*/lower_}
+			if [ -e "/sys/class/net/$p/device" ]; then next=$p; break; fi
+			if [ -z "$next" ] && ls -d "/sys/class/net/$p"/lower_* >/dev/null 2>&1; then next=$p; fi
+		done
+		[ -n "$next" ] || break
+		i=$next
+	done
+	echo "$i"
+}
+
 IFACE=$(ip route get "$ROUTER" 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "dev") print $(i + 1)}' | head -n1)
 MAC=""
 if [ -n "$IFACE" ]; then
+	PHYS=$(phys_iface "$IFACE")
+	if [ "$PHYS" != "$IFACE" ]; then
+		say "$IFACE это мост, bond или VLAN, WoL включаю на физическом порту $PHYS"
+		IFACE=$PHYS
+	fi
 	MAC=$(cat "/sys/class/net/$IFACE/address" 2>/dev/null || true)
+fi
+
+if [ -z "$IFACE" ]; then
+	warn "не нашёл интерфейс к роутеру $ROUTER: включи Wake-on-LAN вручную"
+elif [ ! -e "/sys/class/net/$IFACE/device" ]; then
+	warn "$IFACE не физическая карта (контейнер или VM?): будить WoL надо хост, а не это устройство"
+else
 	if [ -d "/sys/class/net/$IFACE/wireless" ]; then
 		warn "$IFACE это Wi-Fi: из выключенного состояния WoL по Wi-Fi почти никогда не работает, нужен кабель"
 	fi
-	CONN=$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null | awk -F: -v d="$IFACE" '$2 == d {print $1; exit}')
+	CONN=""
+	if has nmcli; then
+		CONN=$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null | awk -F: -v d="$IFACE" '$2 == d {print $1; exit}')
+	fi
+	if [ -z "$CONN" ] && ! has ethtool; then
+		pkg_install ethtool ethtool >/dev/null 2>&1 || true
+	fi
+	ETHTOOL=$(command -v ethtool || true)
+
+	if [ -n "$ETHTOOL" ] && ! "$ETHTOOL" "$IFACE" 2>/dev/null | grep -q 'Supports Wake-on:.*g'; then
+		warn "карта $IFACE не умеет magic packet (или драйвер это скрывает): WoL может не сработать"
+	fi
+	if [ -n "$ETHTOOL" ]; then
+		"$ETHTOOL" -s "$IFACE" wol g 2>/dev/null || warn "ethtool не смог включить WoL на $IFACE"
+	fi
+
+	# Keep it on after reboot: drivers start with WoL off.
 	if [ -n "$CONN" ]; then
-		nmcli connection modify "$CONN" 802-3-ethernet.wake-on-lan magic && say "WoL включён в NetworkManager ($CONN)"
-	elif command -v ethtool >/dev/null; then
-		ethtool -s "$IFACE" wol g && say "WoL включён на $IFACE (ethtool, до перезагрузки)"
+		nmcli connection modify "$CONN" 802-3-ethernet.wake-on-lan magic &&
+			say "WoL включён в NetworkManager ($CONN)"
+	elif [ -n "$ETHTOOL" ] && [ "$INIT" = systemd ]; then
+		cat >/etc/systemd/system/owrt-bot-wol@.service <<EOF
+[Unit]
+Description=owrt-bot: Wake-on-LAN on %I
+BindsTo=sys-subsystem-net-devices-%i.device
+After=sys-subsystem-net-devices-%i.device
+
+[Service]
+Type=oneshot
+ExecStart=$ETHTOOL -s %I wol g
+
+[Install]
+WantedBy=multi-user.target
+EOF
+		systemctl daemon-reload
+		systemctl enable "owrt-bot-wol@$(systemd-escape "$IFACE").service" >/dev/null 2>&1 &&
+			say "WoL включён на $IFACE, служба owrt-bot-wol@$IFACE держит его после перезагрузки"
+	elif [ -n "$ETHTOOL" ] && [ "$INIT" = openrc ]; then
+		mkdir -p /etc/local.d
+		printf '#!/bin/sh\n# owrt-bot: Wake-on-LAN\n%s -s %s wol g\n' "$ETHTOOL" "$IFACE" >/etc/local.d/owrt-bot-wol.start
+		chmod 755 /etc/local.d/owrt-bot-wol.start
+		rc-update add local default >/dev/null 2>&1 || true
+		say "WoL включён на $IFACE, /etc/local.d/owrt-bot-wol.start держит его после перезагрузки"
+	elif [ -n "$ETHTOOL" ]; then
+		say "WoL включён на $IFACE до перезагрузки: добавь «$ETHTOOL -s $IFACE wol g» в автозапуск"
 	else
 		warn "нет ни NetworkManager, ни ethtool: включи Wake-on-LAN на $IFACE вручную"
 	fi
 fi
 
 # 6. Tell the bot
-if command -v curl >/dev/null; then
+if has curl; then
 	curl -fsS -X POST --data-urlencode "user=$BOT_USER" --data-urlencode "os=linux" \
-		--data-urlencode "host=$(hostname)" --data-urlencode "mac=$MAC" "$REPORT" >/dev/null
+		--data-urlencode "host=$(cat /proc/sys/kernel/hostname)" --data-urlencode "mac=$MAC" "$REPORT" >/dev/null
 else
-	wget -qO- --post-data "user=$BOT_USER&os=linux&host=$(hostname)&mac=$MAC" "$REPORT" >/dev/null
+	wget -qO- --post-data "user=$BOT_USER&os=linux&host=$(cat /proc/sys/kernel/hostname)&mac=$MAC" "$REPORT" >/dev/null
 fi && say "готово, бот проверит подключение и напишет в Telegram" || warn "не удалось сообщить боту"

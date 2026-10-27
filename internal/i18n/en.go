@@ -131,19 +131,19 @@ var EN = Catalog{
 	"wol_power_title": "🖥 Power control for {name}",
 	"wol_power_auto": "Run one command on that computer. The script asks for administrator rights, turns on SSH, creates an owrt-bot user and adds the router's key. That key can only shut down, reboot and suspend the PC. When done, the script reports to the bot and the bot tests the login.\n\n" +
 		"<b>Windows</b>, in PowerShell:\n<code>irm {win} | iex</code>\n\n" +
-		"<b>Linux</b>, in a terminal:\n<code>curl -fsSL {linux} | bash</code>\n\n" +
-		"Links work for an hour. The scripts can also be downloaded as files below.",
+		"<b>Linux</b>, in a terminal:\n<code>curl -fsSL {linux} | sh</code>\nno curl: <code>wget -qO- {linux} | sh</code>\n\n" +
+		"Links work for {min} minutes. The scripts can also be downloaded as files below.",
 	"wol_power_rm_title": "🧹 Remove power control from {name}",
 	"wol_power_rm_help": "The script deletes the owrt-bot user, the router's key, the sudo or sshd rule and restores Fast Startup. It removes OpenSSH only if the setup script installed it.\n\n" +
 		"<b>Windows</b>, in PowerShell:\n<code>irm {win} | iex</code>\n\n" +
-		"<b>Linux</b>, in a terminal:\n<code>curl -fsSL {linux} | bash</code>",
+		"<b>Linux</b>, in a terminal:\n<code>curl -fsSL {linux} | sh</code>\nno curl: <code>wget -qO- {linux} | sh</code>",
 	"btn_script_win":         "📄 Windows script",
 	"btn_script_linux":       "📄 Linux script",
 	"btn_power_remove":       "🧹 Remove from the PC",
 	"btn_power_manual":       "⌨️ Set up manually",
 	"btn_power_forget":       "🚫 Only forget in the bot",
 	"wol_script_caption_ps1": "Run: right click → Run with PowerShell, or powershell -ExecutionPolicy Bypass -File {file}",
-	"wol_script_caption_sh":  "Run: bash {file}",
+	"wol_script_caption_sh":  "Run: sh {file}",
 	"wol_script_sent":        "📄 The script is above. When it finishes, the bot will post here.",
 	"wol_power_removed_pc":   "🧹 <b>{name}</b>: power control removed from {host}",
 	"wol_power_auto_ok":      "✅ <b>{name}</b>: power control is set up, the bot logged in to {host}. The ⏻ buttons are on the card now.",

@@ -135,19 +135,19 @@ var RU = Catalog{
 	"wol_power_title": "🖥 Выключение {name}",
 	"wol_power_auto": "Выполни на этом компьютере одну команду. Скрипт сам попросит права администратора, включит SSH, создаст пользователя owrt-bot и добавит ключ роутера. С этим ключом можно только выключить, перезагрузить и усыпить ПК. В конце скрипт сообщит боту, и бот проверит вход.\n\n" +
 		"<b>Windows</b>, в PowerShell:\n<code>irm {win} | iex</code>\n\n" +
-		"<b>Linux</b>, в терминале:\n<code>curl -fsSL {linux} | bash</code>\n\n" +
-		"Ссылки работают час. Ниже можно скачать скрипты файлами.",
+		"<b>Linux</b>, в терминале:\n<code>curl -fsSL {linux} | sh</code>\nнет curl: <code>wget -qO- {linux} | sh</code>\n\n" +
+		"Ссылки работают {min} мин. Ниже можно скачать скрипты файлами.",
 	"wol_power_rm_title": "🧹 Убрать выключение с {name}",
 	"wol_power_rm_help": "Скрипт удалит пользователя owrt-bot, ключ роутера, правило sudo или sshd и вернёт «Быстрый запуск» как было. OpenSSH он удалит, только если его ставил скрипт настройки.\n\n" +
 		"<b>Windows</b>, в PowerShell:\n<code>irm {win} | iex</code>\n\n" +
-		"<b>Linux</b>, в терминале:\n<code>curl -fsSL {linux} | bash</code>",
+		"<b>Linux</b>, в терминале:\n<code>curl -fsSL {linux} | sh</code>\nнет curl: <code>wget -qO- {linux} | sh</code>",
 	"btn_script_win":         "📄 Скрипт для Windows",
 	"btn_script_linux":       "📄 Скрипт для Linux",
 	"btn_power_remove":       "🧹 Убрать с компьютера",
 	"btn_power_manual":       "⌨️ Настроить вручную",
 	"btn_power_forget":       "🚫 Только забыть в боте",
 	"wol_script_caption_ps1": "Запуск: правой кнопкой → «Выполнить с помощью PowerShell» или powershell -ExecutionPolicy Bypass -File {file}",
-	"wol_script_caption_sh":  "Запуск: bash {file}",
+	"wol_script_caption_sh":  "Запуск: sh {file}",
 	"wol_script_sent":        "📄 Скрипт выше. Когда он отработает, бот напишет сюда.",
 	"wol_power_removed_pc":   "🧹 <b>{name}</b>: настройки выключения удалены с {host}",
 	"wol_power_auto_ok":      "✅ <b>{name}</b>: выключение настроено, бот вошёл на {host}. В карточке появились кнопки ⏻.",

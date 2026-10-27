@@ -40,7 +40,8 @@ func (f *Feature) showPowerSetup(c *bot.Ctx) error {
 	text := "<b>" + c.T("wol_power_title", "name", esc(d.Name)) + "</b>\n\n" +
 		c.T("wol_power_auto",
 			"win", esc(f.Setup.ScriptURL(tok, pcsetup.Windows)),
-			"linux", esc(f.Setup.ScriptURL(tok, pcsetup.Linux)))
+			"linux", esc(f.Setup.ScriptURL(tok, pcsetup.Linux)),
+			"min", int(pcsetup.TokenTTL.Minutes()))
 	if d.Power != nil {
 		text += "\n\n" + c.T("wol_power_set", "os", string(d.Power.OS), "user", esc(d.Power.User))
 	}

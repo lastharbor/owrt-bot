@@ -2,8 +2,8 @@
 // shutdown and Wake-on-LAN, and receives their report.
 //
 // It runs a small HTTP server on the router's LAN address only. A device
-// gets a random one-hour token; the PC fetches its script by that token
-// (`irm …/win | iex` or `curl …/linux | sudo bash`) and posts back the
+// gets a random 15-minute token; the PC fetches its script by that token
+// (`irm …/win | iex` or `curl …/linux | sh`) and posts back the
 // user name, OS and MAC when done. Nothing secret is served: the script
 // carries the bot's public key.
 package pcsetup
@@ -70,7 +70,7 @@ func FileName(kind string) string {
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
 // TokenTTL is how long a setup link works.
-const TokenTTL = time.Hour
+const TokenTTL = 15 * time.Minute
 
 // Request is an outstanding setup for one device.
 type Request struct {
@@ -120,7 +120,7 @@ func (s *Server) TokenFor(deviceID, name string) string {
 	for tok, r := range s.tokens {
 		if now.After(r.Expires) {
 			delete(s.tokens, tok)
-		} else if r.DeviceID == deviceID && r.Expires.Sub(now) > 10*time.Minute {
+		} else if r.DeviceID == deviceID && r.Expires.Sub(now) > TokenTTL/3 {
 			return tok
 		}
 	}
